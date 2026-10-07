@@ -1,0 +1,8 @@
+---
+type: knowledge
+name: test-k
+description: t
+category: test
+active: false
+---
+hello world knowledge chunk

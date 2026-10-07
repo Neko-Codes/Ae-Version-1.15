@@ -1,0 +1,7 @@
+type: data
+name: AeV1
+model: mistral:codestral-latest
+has_memory: true
+default_prompt: Example prompt here
+reasoning_mode: explicit
+permissions: all

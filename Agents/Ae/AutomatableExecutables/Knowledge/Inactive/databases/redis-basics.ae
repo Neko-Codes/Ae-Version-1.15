@@ -1,0 +1,12 @@
+---
+type: knowledge
+name: redis-basics
+description: Redis core concepts
+category: databases
+tags: [cache, kv, nosql]
+active: false
+---
+Redis is an in-memory key-value store. It supports strings, hashes, lists, sets,
+sorted sets, streams, and pub/sub. Persistence options include RDB snapshots and
+AOF (append-only file). Use it for caching, rate limiting, session storage, and
+real-time features.

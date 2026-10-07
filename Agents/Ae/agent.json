@@ -1,0 +1,7 @@
+{
+  "name": "Ae",
+  "model": "mistral:codestral-latest",
+  "has_memory": true,
+  "default_prompt": "",
+  "reasoning_mode": "explicit"
+}

@@ -1,0 +1,11 @@
+---
+type: knowledge
+name: redis-cluster
+description: Redis Cluster overview
+category: databases
+tags: [sharding, high-availability]
+active: false
+---
+Redis Cluster provides automatic sharding of data across multiple nodes. It
+uses hash slots (16384) and supports master-replica replication for fault
+tolerance. Clients can connect to any node and get redirected when needed.

@@ -1,0 +1,30 @@
+---
+type: ae
+name: stopwatch
+version: 1.0.0
+description: "Demo long-running .ae: reports elapsed time via report() until should_stop(). Run it in a background delegation, watch progress with `executions`, end it with `stop_execution`."
+parameters:
+  label:
+    type: string
+    required: false
+    description: Label shown in progress reports.
+  interval:
+    type: number
+    required: false
+    description: Seconds between reports (0.5-30, default 2).
+execute: |
+  import time as _t
+  _label = str(params.get("label", "") or "stopwatch")
+  try:
+      _interval = min(30.0, max(0.5, float(params.get("interval", 2) or 2)))
+  except (TypeError, ValueError):
+      _interval = 2.0
+  _start = _t.time()
+  while True:
+      _t.sleep(_interval)
+      _elapsed = round(_t.time() - _start, 1)
+      report(f"{_label}: {_elapsed}s elapsed")
+      if should_stop():
+          break
+  return_value = {"label": _label, "elapsed_seconds": round(_t.time() - _start, 1), "status": "stopped"}
+---

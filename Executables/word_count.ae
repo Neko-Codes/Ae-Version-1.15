@@ -1,0 +1,13 @@
+---
+type: ae
+name: word_count
+version: 1.0.0
+description: Counts the number of words in a text file.
+parameters:
+  file_path:
+    type: string
+    description: Path to the text file.
+execute: "file_path = params['file_path']\n\nwith open(file_path, 'r') as file:\n\
+  \    content = file.read()\n    words = content.split()\n    word_count = len(words)\n\
+  \nreturn_value = word_count"
+---

@@ -1,0 +1,87 @@
+---
+type: tool
+name: create_event
+version: 1.0.0
+description: Create an AEX event (fires on its trigger, never called). Approval required. Itself an editable .ae file.
+parameters:
+  name:
+    type: string
+    required: true
+    description: Event name (lowercase letters, numbers, hyphen, underscore).
+  description:
+    type: string
+    required: true
+    description: What the event is for.
+  trigger:
+    type: object
+    required: true
+    description: Trigger with an 'on' list. Message triggers require a non-empty match string.
+    properties:
+      on:
+        type: array
+        required: true
+        items:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [message, interval, file_change, subagent_complete]
+            match:
+              type: string
+              description: Required for message triggers; case-insensitive substring match.
+            every:
+              type: string
+              description: Required for interval triggers, e.g. 5m.
+            path:
+              type: string
+              description: Required for file_change triggers.
+  input_prompt:
+    type: string
+    required: true
+    description: What the agent should do when triggered.
+  response:
+    type: string
+    required: false
+    description: Exact fixed response text. When provided, emit it verbatim without invoking the agent.
+  target_agent:
+    type: string
+    required: false
+    description: Agent name or '*' for all.
+  enabled:
+    type: boolean
+    required: false
+    description: Whether the event is active.
+execute: |
+  import re
+  import yaml
+  name = params["name"]
+  if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", name):
+      raise ValueError("Event names must be lowercase letters, numbers, hyphens, or underscores.")
+  trigger = params.get("trigger") or {}
+  if not isinstance(trigger, dict) or not isinstance(trigger.get("on"), list) or not trigger["on"]:
+      raise ValueError(f"trigger must contain a non-empty 'on' list. Received: {str(trigger)[:300]}. Example: {{'on': [{{'type': 'message', 'match': 'hello'}}]}}")
+  allowed = {"message", "interval", "file_change", "subagent_complete"}
+  for item in trigger["on"]:
+      if not isinstance(item, dict) or item.get("type") not in allowed:
+          raise ValueError(f"Each trigger 'on' entry needs a type in {sorted(allowed)}. Bad entry: {str(item)[:200]}. Full trigger: {str(trigger)[:300]}")
+      if item["type"] == "message" and (not isinstance(item.get("match"), str) or not item["match"].strip()):
+          raise ValueError("Message triggers require a non-empty 'match' string so the event does not run on every message. Example: {'on': [{'type': 'message', 'match': 'pineapple'}]}.")
+      if item["type"] == "interval":
+          if not re.fullmatch(r"\s*\d+\s*[smhd]\s*", str(item.get("every", "")).lower()) or int(re.sub(r"\D", "", str(item.get("every", "0")))) < 1:
+              raise ValueError("Interval must look like 30s, 5m, 2h, or 1d.")
+      response = params.get("response")
+      if response is not None and (not isinstance(response, str) or not response.strip()):
+        raise ValueError("response must be non-empty text when provided.")
+  try:
+      call_builtin("ae_read", path=f"Events/{name}.ae")
+      raise ValueError(f"Event already exists: {name}")
+  except ValueError as ex:
+      if "already exists" in str(ex):
+          raise
+  metadata = {"type": "event", "name": name, "version": "1.0.0", "description": params["description"], "target_agent": params.get("target_agent") or "*", "enabled": bool(params.get("enabled", True)), "trigger": trigger, "input_prompt": params["input_prompt"], "parameters": {"event": {"type": "object", "required": False, "description": "Trigger data"}}}
+  if response is not None:
+      metadata["response"] = response.strip()
+  content = "---\n" + yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True) + "---\n"
+  return_value = {"saved": call_builtin("ae_write", path=f"Events/{name}.ae", content=content), "name": name,
+                  "invoke": f"Event {name} is now armed (it is an EVENT: fires on its trigger, not something you call). Verify with list_events."}
+---

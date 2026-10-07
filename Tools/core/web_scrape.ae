@@ -1,0 +1,55 @@
+---
+type: tool
+name: web_scrape
+description: Extract clean text content from URLs using Jina Reader. Returns article text without navigation or ads.
+core: true
+effect: external
+parameters:
+  url:
+    type: string
+    required: true
+    description: URL to scrape (http/https).
+  format:
+    type: string
+    required: false
+    default: "text"
+    enum: ["text", "markdown", "json"]
+    description: Output format.
+  max_chars:
+    type: integer
+    required: false
+    default: 50000
+    description: Maximum characters to return.
+execute: |
+  import os as _os
+  import urllib.request as _request
+  import urllib.parse as _parse
+
+  url = params["url"]
+  fmt = params.get("format", "text")
+  max_chars = params.get("max_chars", 50000)
+
+  parsed = _parse.urlparse(url)
+  if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+    return_value = {"url": url, "error": "Invalid URL: must be http or https", "status": "error"}
+  else:
+    api_key = _os.getenv("JINA_API_KEY") or _os.getenv("JINA_KEY")
+    headers = {"Accept": "application/json" if fmt == "json" else "text/plain", "X-Return-Format": fmt}
+    if api_key:
+      headers["Authorization"] = "Bearer " + api_key
+
+    jina_url = "https://r.jina.ai/" + _parse.quote(url, safe="")
+    req = _request.Request(jina_url, headers=headers, method="GET")
+
+    try:
+      with _request.urlopen(req, timeout=45) as resp:
+        content = resp.read(2000000).decode("utf-8", errors="replace")
+      if len(content) > max_chars:
+        content = content[:max_chars] + "\n\n[TRUNCATED: " + str(len(content) - max_chars) + " more chars]"
+      return_value = {"url": url, "format": fmt, "content": content, "chars": len(content), "status": "success"}
+    except _request.HTTPError as e:
+      body = e.read(2000).decode("utf-8", errors="replace")
+      return_value = {"url": url, "error": "HTTP " + str(e.code) + ": " + body, "status": "error"}
+    except Exception as e:
+      return_value = {"url": url, "error": str(e), "status": "error"}
+---

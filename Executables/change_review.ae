@@ -1,0 +1,15 @@
+---
+type: ae
+name: change_review
+description: Gather Git status and a change summary to prepare a focused review.
+version: 1.0.0
+parameters:
+  staged:
+    type: boolean
+    required: false
+    description: Review staged changes when true; otherwise review unstaged changes.
+execute: |
+  status = call_tool("git_status")
+  diff = call_tool("git_diff", staged=params.get("staged", False))
+  return_value = {"status": status, "diff_summary": diff, "review_guidance": "Inspect changed files and report concrete risks, defects, and missing tests."}
+---

@@ -1,0 +1,23 @@
+---
+type: tool
+name: patch_file
+description: Replace one exact unique text block in a workspace file after user approval.
+core: true
+effect: write
+requires_approval: true
+parameters:
+  path:
+    type: string
+    required: true
+    description: Workspace-relative file path.
+  old_text:
+    type: string
+    required: true
+    description: Exact unique block to replace.
+  new_text:
+    type: string
+    required: true
+    description: Replacement block.
+execute: |
+  return_value = call_builtin("patch_file", path=params["path"], old_text=params["old_text"], new_text=params["new_text"])
+---

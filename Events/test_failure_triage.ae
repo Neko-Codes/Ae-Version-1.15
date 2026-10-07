@@ -1,0 +1,13 @@
+---
+type: event
+name: test_failure_triage
+description: Offer a focused diagnosis when a user reports failing tests.
+version: 1.0.0
+enabled: false
+target_agent: "*"
+input_prompt: The user reported test failures. Identify the exact failing test and error, inspect only the relevant code path, and propose the smallest evidence-backed correction.
+trigger:
+  on:
+    - type: message
+      match: "tests failed"
+---

@@ -1,0 +1,16 @@
+---
+type: tool
+name: load_skill
+description: Load the full instructions of one discovered Agent Skill.
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  name:
+    type: string
+    required: true
+    description: Exact discovered skill name.
+execute: |
+  raw = call_builtin("load_skill", name=params["name"])
+  return_value = raw
+---

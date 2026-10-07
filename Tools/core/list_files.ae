@@ -1,0 +1,15 @@
+---
+type: tool
+name: list_files
+description: List workspace files under a relative path.
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  path:
+    type: string
+    required: false
+    description: Workspace-relative folder, defaults to the project root.
+execute: |
+  return_value = json.loads(call_builtin("list_files", path=params.get("path", ".")))
+---

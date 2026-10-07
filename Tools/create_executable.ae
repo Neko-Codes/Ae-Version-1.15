@@ -1,0 +1,105 @@
+---
+type: tool
+name: create_executable
+version: 1.0.0
+description: Create a new AE executable in AutomatableExecutables/Executables/. Requires user approval. This tool is itself an editable .ae file.
+parameters:
+  name:
+    type: string
+    required: true
+    description: Executable name (letters, numbers, underscore, hyphen).
+  description:
+    type: string
+    required: true
+    description: What the automation does.
+  execute_code:
+    type: string
+    required: true
+    description: "Python body (return_value, no bare return). Has params, call_tool, call_skill, call_builtin, json."
+  parameters:
+    type: object
+    required: false
+    description: AEX-style params object.
+execute: |
+  import re
+  import yaml
+  name = params["name"]
+  if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
+      raise ValueError("Executable name must contain only letters, numbers, underscores, or hyphens.")
+  code = params["execute_code"]
+  import re as _re2
+  for _ in range(6):
+      try:
+          compile(code, f"<executable:{name}>", "exec")
+          break
+      except SyntaxError as ex:
+          _msg, _ln = str(ex), getattr(ex, "lineno", None)
+          _lines = code.splitlines()
+          if "return" in _msg and "outside function" in _msg and _ln and 1 <= _ln <= len(_lines):
+              _line = _lines[_ln - 1]
+              _m = _re2.match(r"^(\s*)return(?![\w_])", _line)
+              if _m and not _line.strip().startswith("return_value"):
+                  _rest = _line[_m.end():].strip()
+                  _lines[_ln - 1] = f"{_m.group(1)}return_value = {_rest if _rest else 'None'}"
+                  code = "\n".join(_lines)
+                  continue
+          raise ValueError(
+              f"Invalid Python in execute_code: {ex}. Execute bodies run at MODULE level: "
+              "never use bare `return`; assign `return_value = ...` instead.")
+  # Static name check: compile() proves SYNTAX, not that names resolve. A bare
+  # identifier that is never assigned raises NameError at RUNTIME - an
+  # executable that is permanently broken and gets retried every turn.
+  import ast as _ast
+  import builtins as _builtins
+  _SANDBOX = {
+      "params", "parameters", "data", "workspace", "memory", "agent_name", "tools",
+      "skills", "events", "config", "context", "datetime", "time", "json", "call_tool",
+      "call_builtin", "call_skill", "load_skill", "emit_event", "spawn_agent",
+      "send_message", "wait_for_event", "retain", "recall", "tool_history", "exec_id",
+      "should_stop", "report", "return_value", "body", "__name__", "__file__", "__doc__",
+  }
+  try:
+      _tree = _ast.parse(code)
+  except SyntaxError as _sex:
+      raise ValueError(f"Executable execute_code does not parse: {_sex}")
+  _bound, _loaded = set(), set()
+  for _n in _ast.walk(_tree):
+      if isinstance(_n, _ast.Name):
+          if isinstance(_n.ctx, (_ast.Store, _ast.Del)):
+              _bound.add(_n.id)
+          else:
+              _loaded.add(_n.id)
+      elif isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
+          _bound.add(_n.name)
+      elif isinstance(_n, _ast.arg):
+          _bound.add(_n.arg)
+      elif isinstance(_n, (_ast.Import, _ast.ImportFrom)):
+          for _a in _n.names:
+              _bound.add((_a.asname or _a.name).split(".")[0])
+      elif isinstance(_n, _ast.ExceptHandler) and _n.name:
+          _bound.add(_n.name)
+      elif isinstance(_n, (_ast.Global, _ast.Nonlocal)):
+          _bound.update(_n.names)
+  _settings = params.get("parameters") or {}
+  _undefined = sorted(_loaded - _bound - set(dir(_builtins)) - _SANDBOX - {"self", "cls"})
+  if _undefined:
+      _declared = set(_settings.keys()) if isinstance(_settings, dict) else set()
+      _paramish = [u for u in _undefined if u in _declared]
+      _hint = ""
+      if _paramish:
+          _hint = (" Parameters are NOT auto-bound into scope - read each one as "
+                   + ", ".join("params[\"" + p + "\"]" for p in _paramish) + ".")
+      raise ValueError(
+          "Executable execute_code references undefined name(s): " + ", ".join(_undefined)
+          + ". Nothing injects those into scope, so it would raise NameError on every run." + _hint)
+  try:
+      call_builtin("ae_read", path=f"Executables/{name}.ae")
+      raise ValueError(f"Executable already exists: {name}")
+  except ValueError as ex:
+      if "already exists" in str(ex):
+          raise
+  metadata = {"type": "ae", "name": name, "version": "1.0.0", "description": params["description"], "parameters": params.get("parameters") or {}, "execute": code}
+  content = "---\n" + yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True) + "---\n"
+  return_value = {"saved": call_builtin("ae_write", path=f"Executables/{name}.ae", content=content), "name": name,
+                  "invoke": f"Run {name} via run_executable (it is an EXECUTABLE, not a skill). Test it with real arguments immediately."}
+---

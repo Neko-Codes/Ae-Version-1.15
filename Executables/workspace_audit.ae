@@ -1,0 +1,20 @@
+---
+type: ae
+name: workspace_audit
+description: Gather a compact workspace inventory, relevant text matches, and Git status before a coding task.
+version: 1.0.0
+parameters:
+  focus:
+    type: string
+    required: true
+    description: Main symbol, feature, or topic to investigate.
+  path:
+    type: string
+    required: false
+    description: Workspace-relative directory to inspect.
+execute: |
+  files = json.loads(call_tool("list_files", path=params.get("path", ".")))
+  matches = json.loads(call_tool("search_files", query=params["focus"], path=params.get("path", "."), max_results=40))
+  status = call_tool("git_status")
+  return_value = {"files": files[:100], "matches": matches, "git_status": status}
+---

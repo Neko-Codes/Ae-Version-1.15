@@ -1,0 +1,46 @@
+---
+type: skill
+name: web_search_and_summarize
+description: Searches the web and summarizes results
+version: 1.0.0
+parameters:
+  query:
+    type: string
+    required: true
+    description: Search query
+  max_results:
+    type: integer
+    required: false
+    description: Max number of results to fetch
+execute: |
+  query = params.get('query')
+  max_results = params.get('max_results', 5)
+  search_result = call_tool('web_search', query=query, max_results=max_results)
+  
+  # Normalize results
+  if isinstance(search_result, dict):
+      items = search_result.get('results') or search_result.get('items') or []
+  elif isinstance(search_result, list):
+      items = search_result
+  else:
+      items = []
+  
+  # Build concise summary
+  summary_parts = []
+  for item in items[:max_results]:
+      title = item.get('title') or item.get('Title') or ''
+      snippet = item.get('snippet') or item.get('description') or item.get('Snippet') or ''
+      if title and snippet:
+          summary_parts.append(f"{title}: {snippet}")
+      elif title:
+          summary_parts.append(title)
+  
+  summary = ' '.join(summary_parts)
+  if not summary:
+      summary = f"Searched for '{query}' and found {len(items)} results."
+  
+  return_value = {
+      'summary': summary,
+      'results': items
+  }
+---

@@ -1,0 +1,101 @@
+---
+type: tool
+name: generate_pdf
+version: 2.0.0
+description: "Render HTML + CSS to a PDF file with a pure-Python engine (xhtml2pdf first, then pdfkit, then WeasyPrint). No system binaries required. If no engine is importable it returns a hard error telling you to dependency_install one, so you can install and retry."
+category: pdf-generation
+parameters:
+  html_content:
+    type: string
+    required: false
+    description: "HTML markup to render. Provide this or html_path."
+  html_path:
+    type: string
+    required: false
+    description: "Path to an HTML file to render (alternative to html_content)."
+  css_content:
+    type: string
+    required: false
+    description: "Optional CSS injected into a <style> block when the HTML has none."
+  output_path:
+    type: string
+    required: true
+    description: "Where to write the PDF. Relative paths resolve under the workspace."
+execute: |
+  import io as _io
+  import os as _os
+
+  def _abs(p):
+      p = str(p).strip()
+      if _os.path.isabs(p):
+          return p
+      base = workspace if isinstance(workspace, str) and workspace and _os.path.isdir(workspace) else _os.getcwd()
+      return _os.path.join(base, p)
+
+  html = params.get("html_content")
+  _html_path = params.get("html_path")
+  if (not html) and _html_path:
+      with open(_abs(_html_path), "r", encoding="utf-8", errors="replace") as _fh:
+          html = _fh.read()
+  if not isinstance(html, str) or not html.strip():
+      raise ValueError("Provide html_content (or html_path) with the HTML to render as a PDF.")
+
+  css = params.get("css_content") or ""
+  if css and "<style" not in html.lower():
+      if "</head>" in html.lower():
+          html = html.replace("</head>", "<style>" + css + "</style></head>", 1)
+      else:
+          html = "<style>" + css + "</style>" + html
+
+  out = _abs(params["output_path"])
+  _os.makedirs(_os.path.dirname(out), exist_ok=True)
+
+  errors = []
+  engine = None
+
+  # 1) xhtml2pdf - pure Python, the reliable default everywhere.
+  if engine is None:
+      try:
+          from xhtml2pdf import pisa
+          with open(out, "wb") as _fh:
+              _res = pisa.CreatePDF(html, dest=_fh)
+          if getattr(_res, "err", 0):
+              raise RuntimeError("xhtml2pdf reported " + str(_res.err) + " error(s)")
+          engine = "xhtml2pdf"
+      except Exception as _ex:
+          errors.append("xhtml2pdf: " + str(_ex))
+
+  # 2) pdfkit - only works when the wkhtmltopdf binary is on PATH.
+  if engine is None:
+      try:
+          import pdfkit
+          pdfkit.from_string(html, out)
+          engine = "pdfkit"
+      except Exception as _ex:
+          errors.append("pdfkit: " + str(_ex))
+
+  # 3) WeasyPrint - excellent CSS, but needs Pango/GTK system libraries.
+  if engine is None:
+      try:
+          from weasyprint import HTML
+          HTML(string=html).write_pdf(out)
+          engine = "weasyprint"
+      except Exception as _ex:
+          errors.append("weasyprint: " + str(_ex))
+
+  if engine is None or not _os.path.isfile(out):
+      return_value = {
+          "success": False,
+          "output_path": out,
+          "error": ("No HTML->PDF engine could render this document. Install the pure-Python one and retry "
+                    "with these SAME arguments: dependency_install(packages=['xhtml2pdf'], kind='pypi'). "
+                    "Engine errors: " + " | ".join(errors)[-1200:]),
+      }
+  else:
+      return_value = {
+          "success": True,
+          "output_path": out,
+          "engine": engine,
+          "bytes": _os.path.getsize(out),
+      }
+---

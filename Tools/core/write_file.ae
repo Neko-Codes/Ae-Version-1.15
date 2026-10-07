@@ -1,0 +1,19 @@
+---
+type: tool
+name: write_file
+description: Create or overwrite a workspace text file after user approval.
+core: true
+effect: write
+requires_approval: true
+parameters:
+  path:
+    type: string
+    required: true
+    description: Workspace-relative file path.
+  content:
+    type: string
+    required: true
+    description: Complete UTF-8 file content.
+execute: |
+  return_value = call_builtin("write_file", path=params["path"], content=params["content"])
+---

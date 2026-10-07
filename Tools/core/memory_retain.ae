@@ -1,0 +1,18 @@
+---
+type: tool
+name: memory_retain
+description: Retain a durable reusable preference, user fact, project fact, instruction, or lesson in shared AE memory.
+core: true
+effect: write
+parameters:
+  text:
+    type: string
+    required: true
+    description: Concise durable memory. Never include secrets.
+  category:
+    type: string
+    required: false
+    description: Memory category.
+execute: |
+  return_value = json.loads(call_builtin("memory_retain", text=params["text"], category=params.get("category", "learned_lesson")))
+---

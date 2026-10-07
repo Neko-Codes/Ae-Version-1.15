@@ -1,0 +1,98 @@
+---
+type: tool
+name: create_knowledge
+version: 1.0.0
+description: >-
+  Write durable knowledge — a fact, a reference, or something you looked up. The
+  body IS the content; there is no execute block. Use this for what is true, not
+  for what to do. Requires user approval.
+category: knowledge
+parameters:
+  name:
+    type: string
+    required: true
+    description: "Knowledge name (letters, numbers, underscore, hyphen, dot)."
+  description:
+    type: string
+    required: false
+    description: "One line on what this covers. Omit if the body's first line already says it."
+  category:
+    type: string
+    required: false
+    description: "Subject area (e.g. 'python', 'clients', 'payments'). Default 'uncategorized'."
+  tags:
+    type: array
+    required: false
+    description: "Extra tags for retrieval. The category is always included."
+  body:
+    type: string
+    required: true
+    description: "The knowledge itself as markdown prose. Include specifics — names, numbers, paths — so search can match them."
+  status:
+    type: string
+    required: false
+    description: "'active' loads its body into every prompt (for standing facts you always need); 'inactive' is searched on demand via query_knowledge. Default 'inactive'."
+  scope:
+    type: string
+    required: false
+    description: "'local' (default, this agent only), 'shared' (all agents), or 'global'."
+execute: |
+  import re
+  import yaml
+
+  name = params["name"]
+  if not re.fullmatch(r"[a-zA-Z0-9_.-]+", name):
+      raise ValueError("Knowledge name must contain only letters, numbers, underscores, hyphens, or dots.")
+  category = params.get("category") or "uncategorized"
+  if not re.fullmatch(r"[a-zA-Z0-9_.-]+", category):
+      raise ValueError("Category must contain only letters, numbers, underscores, or hyphens.")
+  body = str(params.get("body") or "").strip()
+  if not body:
+      raise ValueError(
+          "Knowledge needs body text — a fact, a reference, or the result of a lookup. "
+          "Write what is true, not what to do; procedures are workflows.")
+
+  status = str(params.get("status") or "inactive").strip().lower()
+  if status not in ("active", "inactive"):
+      raise ValueError("status must be 'active' or 'inactive'.")
+
+  metadata = {"type": "knowledge", "name": name, "version": "1.0.0"}
+  if params.get("description"):
+      metadata["description"] = str(params["description"]).strip()
+  metadata["category"] = category
+  if status == "active":
+      metadata["active"] = True
+  tags = params.get("tags")
+  if tags:
+      if isinstance(tags, str):
+          tags = [tags]
+      metadata["tags"] = sorted({str(t).strip().lower() for t in tags if str(t).strip()})
+
+  content = "---\n" + yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True) + "---\n\n" + body + "\n"
+  # The body is a second YAML document, so validate the frontmatter on its own.
+  _lines = content.split("\n")
+  _end = next((i for i, _l in enumerate(_lines[1:], 1) if _l.strip() == "---"), None)
+  try:
+      yaml.safe_load("\n".join(_lines[1:_end]))
+  except Exception as ex:
+      raise ValueError(f"Knowledge does not parse: {ex}")
+
+  path = f"Knowledge/{'Active' if status == 'active' else 'Inactive'}/{category}/{name}.ae"
+  scope = params.get("scope")
+  _scope = {"scope": scope} if scope else {}
+  try:
+      call_builtin("ae_read", path=path, **_scope)
+      raise ValueError(f"Knowledge already exists: {name}. Use update_entity to change it.")
+  except ValueError as ex:
+      if "already exists" in str(ex):
+          raise
+
+  saved = call_builtin("ae_write", path=path, content=content, **_scope)
+  if status == "inactive":
+      Invoke = (f"Found by search via query_knowledge, and readable in full via "
+                f"read_entity(name='{name}').")
+  else:
+      Invoke = f"Loaded into every prompt from now on, and also readable via read_entity(name='{name}')."
+  return_value = {"saved": saved, "name": name, "type": "knowledge", "status": status,
+                  "invoke": Invoke}
+---

@@ -1,0 +1,11 @@
+---
+type: tool
+name: list_executables
+description: Discover available AEX executable workflows.
+core: true
+effect: read
+parallel_safe: true
+parameters: {}
+execute: |
+  return_value = json.loads(call_builtin("list_executables"))
+---

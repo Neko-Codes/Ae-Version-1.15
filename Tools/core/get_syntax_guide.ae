@@ -1,0 +1,11 @@
+---
+type: tool
+name: get_syntax_guide
+description: Return the live AE (.ae) syntax guide. Agents must read this before creating Tools, Skills, Executables, or Events.
+core: true
+effect: read
+parallel_safe: true
+parameters: {}
+execute: |
+  return_value = call_builtin("ae_read", path="AE_SYNTAX.md")
+---

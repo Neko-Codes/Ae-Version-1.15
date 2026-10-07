@@ -1,0 +1,34 @@
+---
+type: ae
+name: board
+description: Render the shared Kanban board (todo/in_progress/blocked/done lanes with assignees) plus per-agent inbox counts. Editable — this is what the `board` command prints.
+version: 1.0.0
+parameters: {}
+execute: |
+  inv = json.loads(call_builtin("ae_list"))
+  todos = json.loads(call_builtin("todo_list", action="list"))
+  lanes = ["todo", "in_progress", "blocked", "done"]
+  lines = []
+  total = 0
+  for lane in lanes:
+      tasks = [t for t in todos if t.get("status") == lane]
+      total += len(tasks)
+      lines.append(f"## {lane.upper()} ({len(tasks)})")
+      if not tasks:
+          lines.append("  - (empty)")
+      for t in tasks[:8]:
+          who = t.get("assignee", "*")
+          lines.append(f"  - {t.get('title', '?')} @{who} [{str(t.get('id', ''))[:8]}]")
+      if len(tasks) > 8:
+          lines.append(f"  - ... and {len(tasks) - 8} more")
+      lines.append("")
+  lines.append("## Inboxes")
+  inboxes = inv.get("inboxes", [])
+  if not inboxes:
+      lines.append("  - no agent profiles")
+  for box in inboxes:
+      mine = sum(1 for t in todos if t.get("assignee") == box.get("agent") and t.get("status") != "done")
+      lines.append(f"  - {box.get('agent')}: {box.get('pending', 0)} msgs, {mine} open tasks")
+  lines.insert(0, f"# Kanban board ({total} tasks)")
+  return_value = "\n".join(lines)
+---

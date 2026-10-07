@@ -1,0 +1,39 @@
+---
+type: tool
+name: read_entity
+version: 1.0.0
+effect: read
+description: Read any AE entity (tool, skill, executable, event, core_tool) by name and type. This tool is itself an editable .ae file.
+parameters:
+  entity_type:
+    type: string
+    required: true
+    description: One of tool, skill, executable, event, core_tool.
+  name:
+    type: string
+    required: true
+    description: Entity name (for skills, name or category path).
+execute: |
+  etype = params["entity_type"]
+  name = params["name"]
+  if etype == "core_tool":
+      return_value = call_builtin("ae_read", path=f"Tools/core/{name}.ae")
+  elif etype == "tool":
+      try:
+          path = call_builtin("_capability_path", name=name, type=etype)
+          return_value = call_builtin("ae_read", path=path)
+      except Exception:
+          return_value = call_builtin("ae_read", path=f"Tools/{name}.ae")
+  elif etype == "executable":
+      return_value = call_builtin("ae_read", path=f"Executables/{name}.ae")
+  elif etype == "event":
+      return_value = call_builtin("ae_read", path=f"Events/{name}.ae")
+  elif etype == "skill":
+      inv = json.loads(call_builtin("ae_list"))
+      match = next((s for s in inv.get("skills", []) if s.get("name") == name or s.get("category") == name or s.get("category", "").endswith("/" + name)), None)
+      if match is None or not match.get("path"):
+          raise ValueError(f"Skill not found: {name}. Use list_all_entities to discover skills.")
+      return_value = call_builtin("ae_read", path=match["path"])
+  else:
+      raise ValueError(f"Unknown entity type: {etype}.")
+---

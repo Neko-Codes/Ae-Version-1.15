@@ -1,0 +1,28 @@
+---
+type: tool
+name: text_to_speech
+description: Generate MP3 speech from text with the configured ElevenLabs voice. The service may incur charges and requires approval.
+core: true
+effect: external
+requires_approval: true
+parameters:
+  text:
+    type: string
+    required: true
+    description: Text to speak.
+  voice_id:
+    type: string
+    required: false
+    description: ElevenLabs voice ID; defaults to ELEVENLABS_VOICE_ID.
+  model_id:
+    type: string
+    required: false
+    description: ElevenLabs speech model; defaults to eleven_v4_turbo.
+  output_path:
+    type: string
+    required: false
+    description: Workspace-relative .mp3 output path.
+execute: |
+  result = call_builtin("text_to_speech", text=params["text"], voice_id=params.get("voice_id"), model_id=params.get("model_id"), output_path=params.get("output_path"))
+  return_value = json.loads(result)
+---

@@ -1,0 +1,37 @@
+---
+type: tool
+name: file_read
+description: "Read file contents with encoding handling (UTF-8 support). Returns text content and metadata."
+version: "1.0.0"
+core: true
+effect: read
+parallel_safe: true
+permissions: ["read_files"]
+parameters:
+  path:
+    type: string
+    required: true
+    description: "Workspace-relative file path."
+  encoding:
+    type: string
+    required: false
+    default: "utf-8"
+    description: "Text encoding (utf-8, latin-1, etc.)."
+  max_chars:
+    type: integer
+    required: false
+    default: 100000
+    description: "Maximum characters to return (truncates with notice)."
+execute: |
+  raw = call_builtin("read_file", path=params["path"])
+  import json as _json
+  try:
+    data = _json.loads(raw)
+    content = data.get("content", raw)
+  except Exception:
+    content = raw
+  max_c = params.get("max_chars", 100000)
+  if len(content) > max_c:
+    content = content[:max_c] + "\n\n[TRUNCATED: " + str(len(content) - max_c) + " more chars]"
+  return_value = {"path": params["path"], "content": content, "encoding": params.get("encoding", "utf-8"), "chars": len(content)}
+---

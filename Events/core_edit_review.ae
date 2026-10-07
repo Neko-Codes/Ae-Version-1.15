@@ -1,0 +1,13 @@
+---
+type: event
+name: core_edit_review
+description: Prompt a core-tool review after a request to change AE's own harness behavior.
+version: 1.0.0
+enabled: false
+target_agent: "*"
+input_prompt: The user requested a change to AE's core harness. Inspect the relevant core AEX definition and existing tests, identify compatibility and regression risks, then implement and verify the requested change.
+trigger:
+  on:
+    - type: message
+      match: "change AE core"
+---

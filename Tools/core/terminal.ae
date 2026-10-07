@@ -1,0 +1,15 @@
+---
+type: tool
+name: terminal
+description: Run a command in the configured host shell after user approval.
+core: true
+effect: execute
+requires_approval: true
+parameters:
+  command:
+    type: string
+    required: true
+    description: Host-shell command to run.
+execute: |
+  return_value = call_builtin("terminal", command=params["command"])
+---

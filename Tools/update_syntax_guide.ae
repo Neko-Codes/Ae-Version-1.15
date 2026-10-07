@@ -1,0 +1,34 @@
+---
+type: tool
+name: update_syntax_guide
+version: 1.0.0
+description: Append or replace a section of the live AE syntax guide (agents maintain this). Requires user approval. This tool is itself an editable .ae file.
+parameters:
+  section:
+    type: string
+    required: true
+    description: Section heading to add or replace.
+  content:
+    type: string
+    required: true
+    description: Markdown content for the section.
+  mode:
+    type: string
+    required: false
+    description: append or replace.
+execute: |
+  import re
+  section = params["section"]
+  content = params["content"].strip()
+  mode = params.get("mode", "append")
+  existing = call_builtin("ae_read", path="AE_SYNTAX.md")
+  block = f"\n## {section}\n\n{content}\n"
+  if mode == "replace" and f"## {section}" in existing:
+      pattern = re.compile(r"\n## " + re.escape(section) + r"\n.*?(?=\n## |\Z)", re.DOTALL)
+      existing, n = pattern.subn(block, existing)
+      if n == 0:
+          existing += block
+  else:
+      existing += block
+  return_value = call_builtin("ae_write", path="AE_SYNTAX.md", content=existing)
+---

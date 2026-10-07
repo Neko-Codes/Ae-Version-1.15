@@ -1,0 +1,16 @@
+---
+type: tool
+name: load_executable
+description: Read an AEX executable definition before deciding whether to run it.
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  name:
+    type: string
+    required: true
+    description: Exact executable name.
+execute: |
+  raw = call_builtin("load_executable", name=params["name"])
+  return_value = raw
+---

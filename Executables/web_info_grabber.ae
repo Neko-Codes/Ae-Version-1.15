@@ -1,0 +1,29 @@
+---
+type: ae
+name: web_info_grabber
+version: 1.0.0
+description: Fetches information from the web and saves it to a file.
+parameters:
+  query:
+    type: string
+    description: The search query to fetch information for.
+  file_path:
+    type: string
+    description: The path to save the fetched information.
+execute: 'query = params[''query'']
+
+  file_path = params[''file_path'']
+
+
+  # Perform web search
+
+  search_results = call_builtin(''web_search'', query=query, max_results=5)
+
+
+  # Save results to file
+
+  call_builtin(''write_file'', path=file_path, content=str(search_results))
+
+
+  return_value = ''Information fetched and saved successfully.'''
+---

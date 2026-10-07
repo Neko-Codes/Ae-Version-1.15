@@ -1,0 +1,15 @@
+---
+type: tool
+name: read_file
+description: Read a UTF-8 text file inside the workspace.
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  path:
+    type: string
+    required: true
+    description: Workspace-relative file path.
+execute: |
+  return_value = call_builtin("read_file", path=params["path"])
+---

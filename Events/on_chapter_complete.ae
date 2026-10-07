@@ -1,0 +1,59 @@
+---
+type: event
+name: on_chapter_complete
+version: "1.0.0"
+description: "Triggers when a new chapter is created to update the master todo list and track progress."
+author: "Axiom Core"
+tags: ["automation", "workflow", "novel", "tracking"]
+trigger:
+  on:
+    - type: message
+      match: "chapter_created"
+      condition: "data.title is not None"
+permissions:
+  - read_memory
+  - write_memory
+execute: |
+  # This script runs automatically when 'chapter_created' is emitted
+  import json as _json
+  title = data.get("title") if isinstance(data, dict) else str(data)
+
+  def _as_list(value):
+    if isinstance(value, str):
+      try:
+        value = _json.loads(value)
+      except Exception:
+        return []
+    return value if isinstance(value, list) else []
+
+  # Update the shared memory/todo list
+  current_todos = call_tool("memory_recall", query="project_todos")
+  todos = [t for t in _as_list(current_todos) if isinstance(t, dict)]
+
+  if todos:
+    updated = False
+    for todo in todos:
+      if todo.get("task") == "Write chapter: " + title:
+        todo["status"] = "completed"
+        updated = True
+        break
+    if updated:
+      call_tool("memory_retain", text=_json.dumps(todos), category="novel")
+
+  # Also increment chapter counter
+  progress = call_tool("memory_recall", query="chapter_progress")
+  prog = {"completed": 0, "total": 0}
+  for item in _as_list(progress):
+    if isinstance(item, dict):
+      try:
+        maybe = _json.loads(item.get("text", ""))
+      except Exception:
+        continue
+      if isinstance(maybe, dict) and "completed" in maybe:
+        prog = maybe
+        break
+  prog["completed"] = prog.get("completed", 0) + 1
+  call_tool("memory_retain", text=_json.dumps(prog), category="novel")
+
+  return_value = {"status": "updated", "chapter": title, "progress": prog}
+---

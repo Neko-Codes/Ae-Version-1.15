@@ -1,0 +1,16 @@
+---
+type: tool
+name: workspace_overview
+description: Inspect a workspace folder and its Git status. Use to orient before coding or reviewing.
+core: true
+effect: read
+parameters:
+  path:
+    type: string
+    required: false
+    description: Workspace-relative folder to inspect; defaults to the workspace root.
+execute: |
+  files = json.loads(call_tool("list_files", path=params.get("path", ".")))
+  status = call_tool("git_status")
+  return_value = {"files": files[:80], "git_status": status}
+---

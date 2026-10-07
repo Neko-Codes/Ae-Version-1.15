@@ -1,0 +1,11 @@
+---
+type: tool
+name: git_status
+description: Inspect changed, staged, and untracked workspace files.
+core: true
+effect: read
+parallel_safe: true
+parameters: {}
+execute: |
+  return_value = call_builtin("git_status")
+---

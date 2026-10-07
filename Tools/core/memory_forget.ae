@@ -1,0 +1,14 @@
+---
+type: tool
+name: memory_forget
+description: Forget an exact shared memory by ID or exact text.
+core: true
+effect: write
+parameters:
+  memory_id_or_text:
+    type: string
+    required: true
+    description: Stable memory ID or exact saved text.
+execute: |
+  return_value = json.loads(call_builtin("memory_forget", memory_id_or_text=params["memory_id_or_text"]))
+---

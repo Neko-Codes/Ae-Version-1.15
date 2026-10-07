@@ -1,0 +1,51 @@
+---
+type: tool
+name: delegate_task
+description: "Delegate to a subagent (isolated, volatile, no nesting). Profile-to-profile: target_agent + goal only."
+core: true
+effect: execute
+requires_approval: true
+parameters:
+  goal:
+    type: string
+    required: true
+    description: The task goal for the subagent.
+  context:
+    type: string
+    required: false
+    description: Additional context for the subagent.
+  target_agent:
+    type: string
+    required: false
+    description: Exact profile name (inherits its provider/model). Never invent provider/model.
+  provider:
+    type: string
+    required: false
+    description: Force a backend (must have key).
+  model:
+    type: string
+    required: false
+    description: Model ID for forced backend.
+  max_tokens:
+    type: integer
+    required: false
+    description: Max response tokens (50-100 self-delegate).
+  toolsets:
+    type: array
+    required: false
+    description: "Allowed tool categories: web|file|terminal|memory|git|skill|event|executable|delegation(check_subagent). Omit for full access."
+  timeout_seconds:
+    type: integer
+    required: false
+    description: Timeout in seconds.
+  background:
+    type: boolean
+    required: false
+    description: Async — return dlg_ id (steer/check/stop). Default false = block.
+  stance:
+    type: string
+    required: false
+    description: "neutral = do it; adversarial = red-team it; reviewer = PASS/FAIL audit. Debriefs to you."
+execute: |
+  return_value = call_builtin("delegate_task", goal=params["goal"], context=params.get("context", ""), target_agent=params.get("target_agent"), provider=params.get("provider"), model=params.get("model"), max_tokens=params.get("max_tokens"), toolsets=params.get("toolsets"), timeout_seconds=params.get("timeout_seconds", 120), background=params.get("background", False), stance=params.get("stance", "neutral"))
+---

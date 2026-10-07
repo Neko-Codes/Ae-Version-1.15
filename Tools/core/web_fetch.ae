@@ -1,0 +1,14 @@
+---
+type: tool
+name: web_fetch
+description: Fetch an HTTP/HTTPS page as readable Markdown using Jina Reader.
+core: true
+effect: external
+parameters:
+  url:
+    type: string
+    required: true
+    description: Public HTTP or HTTPS URL to fetch.
+execute: |
+  return_value = call_builtin("web_fetch", url=params["url"])
+---

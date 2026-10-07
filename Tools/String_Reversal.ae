@@ -1,0 +1,16 @@
+---
+type: tool
+name: String_Reversal
+version: 1.1.0
+effect: read
+description: Reverse a given string. Returns the reversed text (quote it verbatim, never retype).
+parameters:
+  text:
+    type: string
+    description: The string to be reversed.
+execute: |
+  _text = params["text"]
+  if not isinstance(_text, str):
+      raise ValueError("text must be a string.")
+  return_value = {"reversed": _text[::-1]}
+---

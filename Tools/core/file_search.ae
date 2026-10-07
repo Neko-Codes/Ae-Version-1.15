@@ -1,0 +1,74 @@
+---
+type: tool
+name: file_search
+description: "Find files by name, extension, or content (glob + grep)."
+version: "1.0.0"
+core: true
+effect: read
+parallel_safe: true
+permissions: ["read_files"]
+parameters:
+  pattern:
+    type: string
+    required: false
+    description: "Glob, e.g. '**/*.py'. Omitted = list all."
+  path:
+    type: string
+    required: false
+    default: "."
+    description: "Workspace-relative directory."
+  content:
+    type: string
+    required: false
+    description: "Grep file contents for this text."
+  case_sensitive:
+    type: boolean
+    required: false
+    default: false
+    description: "Case-sensitive match."
+  max_results:
+    type: integer
+    required: false
+    default: 100
+    description: "Max results."
+  include_hidden:
+    type: boolean
+    required: false
+    default: false
+    description: "Include hidden files."
+execute: |
+  results = []
+  path = params.get("path", ".")
+  pattern = params.get("pattern")
+  content = params.get("content")
+  case_sensitive = params.get("case_sensitive", False)
+  max_results = params.get("max_results", 100)
+  include_hidden = params.get("include_hidden", False)
+
+  if content:
+    raw = call_builtin("search_files", query=content, path=path, case_sensitive=case_sensitive, max_results=max_results)
+    import json as _json
+    try:
+      results = _json.loads(raw).get("results", [])
+    except Exception:
+      results = []
+  elif pattern:
+    raw = call_builtin("glob", pattern=pattern, path=path)
+    import json as _json
+    try:
+      results = _json.loads(raw).get("matches", [])
+    except Exception:
+      results = []
+  else:
+    raw = call_builtin("list_files", path=path)
+    import json as _json
+    try:
+      results = _json.loads(raw).get("files", [])
+    except Exception:
+      results = []
+
+  if not include_hidden:
+    results = [r for r in results if not any(part.startswith(".") for part in r.split("/"))]
+
+  return_value = {"path": path, "pattern": pattern, "content_query": content, "count": len(results), "results": results[:max_results]}
+---

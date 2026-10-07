@@ -1,0 +1,128 @@
+---
+type: skill
+name: scrapling
+version: 1.0.0
+description: Scrape sites with stealth browsing and Cloudflare bypass.
+parameters:
+  section:
+    type: string
+    required: false
+    description: 'Return only this ## section of the docs.'
+config:
+  docs: "# Scrapling\n\n[Scrapling](https://github.com/D4Vinci/Scrapling) is a web\
+    \ scraping framework with anti-bot bypass, stealth browser automation, and a spider\
+    \ framework. It provides three fetching strategies (HTTP, dynamic JS, stealth/Cloudflare)\
+    \ and a full CLI.\n\n**This skill is for educational and research purposes only.**\
+    \ Users must comply with local/international data scraping laws and respect website\
+    \ Terms of Service.\n\n## When to Use\n\n- Scraping static HTML pages (faster\
+    \ than browser tools)\n- Scraping JS-rendered pages that need a real browser\n\
+    - Bypassing Cloudflare Turnstile or bot detection\n- Crawling multiple pages with\
+    \ a spider\n- When the built-in `web_extract` tool does not return the data you\
+    \ need\n\n## Installation\n\n```bash\npip install \"scrapling[all]\"\nscrapling\
+    \ install\n```\n\nMinimal install (HTTP only, no browser):\n```bash\npip install\
+    \ scrapling\n```\n\nWith browser automation only:\n```bash\npip install \"scrapling[fetchers]\"\
+    \nscrapling install\n```\n\n## Quick Reference\n\n| Approach | Class | Use When\
+    \ |\n|----------|-------|----------|\n| HTTP | `Fetcher` / `FetcherSession` |\
+    \ Static pages, APIs, fast bulk requests |\n| Dynamic | `DynamicFetcher` / `DynamicSession`\
+    \ | JS-rendered content, SPAs |\n| Stealth | `StealthyFetcher` / `StealthySession`\
+    \ | Cloudflare, anti-bot protected sites |\n| Spider | `Spider` | Multi-page crawling\
+    \ with link following |\n\n## CLI Usage\n\n### Extract Static Page\n\n```bash\n\
+    scrapling extract get 'https://example.com' output.md\n```\n\nWith CSS selector\
+    \ and browser impersonation:\n\n```bash\nscrapling extract get 'https://example.com'\
+    \ output.md \\\n  --css-selector '.content' \\\n  --impersonate 'chrome'\n```\n\
+    \n### Extract JS-Rendered Page\n\n```bash\nscrapling extract fetch 'https://example.com'\
+    \ output.md \\\n  --css-selector '.dynamic-content' \\\n  --disable-resources\
+    \ \\\n  --network-idle\n```\n\n### Extract Cloudflare-Protected Page\n\n```bash\n\
+    scrapling extract stealthy-fetch 'https://protected-site.com' output.html \\\n\
+    \  --solve-cloudflare \\\n  --block-webrtc \\\n  --hide-canvas\n```\n\n### POST\
+    \ Request\n\n```bash\nscrapling extract post 'https://example.com/api' output.json\
+    \ \\\n  --json '{\"query\": \"search term\"}'\n```\n\n### Output Formats\n\nThe\
+    \ output format is determined by the file extension:\n- `.html` -- raw HTML\n\
+    - `.md` -- converted to Markdown\n- `.txt` -- plain text\n- `.json` / `.jsonl`\
+    \ -- JSON\n\n## Python: HTTP Scraping\n\n### Single Request\n\n```python\nfrom\
+    \ scrapling.fetchers import Fetcher\n\npage = Fetcher.get('https://quotes.toscrape.com/')\n\
+    quotes = page.css('.quote .text::text').getall()\nfor q in quotes:\n    print(q)\n\
+    ```\n\n### Session (Persistent Cookies)\n\n```python\nfrom scrapling.fetchers\
+    \ import FetcherSession\n\nwith FetcherSession(impersonate='chrome') as session:\n\
+    \    page = session.get('https://example.com/', stealthy_headers=True)\n    links\
+    \ = page.css('a::attr(href)').getall()\n    for link in links[:5]:\n        sub\
+    \ = session.get(link)\n        print(sub.css('h1::text').get())\n```\n\n### POST\
+    \ / PUT / DELETE\n\n```python\npage = Fetcher.post('https://api.example.com/data',\
+    \ json={\"key\": \"value\"})\npage = Fetcher.put('https://api.example.com/item/1',\
+    \ data={\"name\": \"updated\"})\npage = Fetcher.delete('https://api.example.com/item/1')\n\
+    ```\n\n### With Proxy\n\n```python\npage = Fetcher.get('https://example.com',\
+    \ proxy='http://user:pass@proxy:8080')\n```\n\n## Python: Dynamic Pages (JS-Rendered)\n\
+    \nFor pages that require JavaScript execution (SPAs, lazy-loaded content):\n\n\
+    ```python\nfrom scrapling.fetchers import DynamicFetcher\n\npage = DynamicFetcher.fetch('https://example.com',\
+    \ headless=True)\ndata = page.css('.js-loaded-content::text').getall()\n```\n\n\
+    ### Wait for Specific Element\n\n```python\npage = DynamicFetcher.fetch(\n   \
+    \ 'https://example.com',\n    wait_selector=('.results', 'visible'),\n    network_idle=True,\n\
+    )\n```\n\n### Disable Resources for Speed\n\nBlocks fonts, images, media, stylesheets\
+    \ (~25% faster):\n\n```python\nfrom scrapling.fetchers import DynamicSession\n\
+    \nwith DynamicSession(headless=True, disable_resources=True, network_idle=True)\
+    \ as session:\n    page = session.fetch('https://example.com')\n    items = page.css('.item::text').getall()\n\
+    ```\n\n### Custom Page Automation\n\n```python\nfrom playwright.sync_api import\
+    \ Page\nfrom scrapling.fetchers import DynamicFetcher\n\ndef scroll_and_click(page:\
+    \ Page):\n    page.mouse.wheel(0, 3000)\n    page.wait_for_timeout(1000)\n   \
+    \ page.click('button.load-more')\n    page.wait_for_selector('.extra-results')\n\
+    \npage = DynamicFetcher.fetch('https://example.com', page_action=scroll_and_click)\n\
+    results = page.css('.extra-results .item::text').getall()\n```\n\n## Python: Stealth\
+    \ Mode (Anti-Bot Bypass)\n\nFor Cloudflare-protected or heavily fingerprinted\
+    \ sites:\n\n```python\nfrom scrapling.fetchers import StealthyFetcher\n\npage\
+    \ = StealthyFetcher.fetch(\n    'https://protected-site.com',\n    headless=True,\n\
+    \    solve_cloudflare=True,\n    block_webrtc=True,\n    hide_canvas=True,\n)\n\
+    content = page.css('.protected-content::text').getall()\n```\n\n### Stealth Session\n\
+    \n```python\nfrom scrapling.fetchers import StealthySession\n\nwith StealthySession(headless=True,\
+    \ solve_cloudflare=True) as session:\n    page1 = session.fetch('https://protected-site.com/page1')\n\
+    \    page2 = session.fetch('https://protected-site.com/page2')\n```\n\n## Element\
+    \ Selection\n\nAll fetchers return a `Selector` object with these methods:\n\n\
+    ### CSS Selectors\n\n```python\npage.css('h1::text').get()              # First\
+    \ h1 text\npage.css('a::attr(href)').getall()      # All link hrefs\npage.css('.quote\
+    \ .text::text').getall() # Nested selection\n```\n\n### XPath\n\n```python\npage.xpath('//div[@class=\"\
+    content\"]/text()').getall()\npage.xpath('//a/@href').getall()\n```\n\n### Find\
+    \ Methods\n\n```python\npage.find_all('div', class_='quote')       # By tag +\
+    \ attribute\npage.find_by_text('Read more', tag='a')    # By text content\npage.find_by_regex(r'\\\
+    $\\d+\\.\\d{2}')       # By regex pattern\n```\n\n### Similar Elements\n\nFind\
+    \ elements with similar structure (useful for product listings, etc.):\n\n```python\n\
+    first_product = page.css('.product')[0]\nall_similar = first_product.find_similar()\n\
+    ```\n\n### Navigation\n\n```python\nel = page.css('.target')[0]\nel.parent   \
+    \             # Parent element\nel.children              # Child elements\nel.next_sibling\
+    \          # Next sibling\nel.prev_sibling          # Previous sibling\n```\n\n\
+    ## Python: Spider Framework\n\nFor multi-page crawling with link following:\n\n\
+    ```python\nfrom scrapling.spiders import Spider, Request, Response\n\nclass QuotesSpider(Spider):\n\
+    \    name = \"quotes\"\n    start_urls = [\"https://quotes.toscrape.com/\"]\n\
+    \    concurrent_requests = 10\n    download_delay = 1\n\n    async def parse(self,\
+    \ response: Response):\n        for quote in response.css('.quote'):\n       \
+    \     yield {\n                \"text\": quote.css('.text::text').get(),\n   \
+    \             \"author\": quote.css('.author::text').get(),\n                \"\
+    tags\": quote.css('.tag::text').getall(),\n            }\n\n        next_page\
+    \ = response.css('.next a::attr(href)').get()\n        if next_page:\n       \
+    \     yield response.follow(next_page)\n\nresult = QuotesSpider().start()\nprint(f\"\
+    Scraped {len(result.items)} quotes\")\nresult.items.to_json(\"quotes.json\")\n\
+    ```\n\n### Multi-Session Spider\n\nRoute requests to different fetcher types:\n\
+    \n```python\nfrom scrapling.fetchers import FetcherSession, AsyncStealthySession\n\
+    \nclass SmartSpider(Spider):\n    name = \"smart\"\n    start_urls = [\"https://example.com/\"\
+    ]\n\n    def configure_sessions(self, manager):\n        manager.add(\"fast\"\
+    , FetcherSession(impersonate=\"chrome\"))\n        manager.add(\"stealth\", AsyncStealthySession(headless=True),\
+    \ lazy=True)\n\n    async def parse(self, response: Response):\n        for link\
+    \ in response.css('a::attr(href)').getall():\n            if \"protected\" in\
+    \ link:\n                yield Request(link, sid=\"stealth\")\n            else:\n\
+    \                yield Request(link, sid=\"fast\", callback=self.parse)\n```\n\
+    \n### Pause/Resume Crawling\n\n```python\nspider = QuotesSpider(crawldir=\"./crawl_checkpoint\"\
+    )\nspider.start()  # Ctrl+C to pause, re-run to resume from checkpoint\n```\n\n\
+    ## Pitfalls\n\n- **Browser install required**: run `scrapling install` after pip\
+    \ install -- without it, `DynamicFetcher` and `StealthyFetcher` will fail\n- **Timeouts**:\
+    \ DynamicFetcher/StealthyFetcher timeout is in **milliseconds** (default 30000),\
+    \ Fetcher timeout is in **seconds**\n- **Cloudflare bypass**: `solve_cloudflare=True`\
+    \ adds 5-15 seconds to fetch time -- only enable when needed\n- **Resource usage**:\
+    \ StealthyFetcher runs a real browser -- limit concurrent usage\n- **Legal**:\
+    \ always check robots.txt and website ToS before scraping. This library is for\
+    \ educational and research purposes\n- **Python version**: requires Python 3.10+"
+execute: "import re\ndocs = (config.get(\"docs\") or \"\") if isinstance(config, dict)\
+  \ else \"\"\nsection = (params.get(\"section\") or \"\").strip() if isinstance(params,\
+  \ dict) else \"\"\nif section:\n    pattern = re.compile(r\"^##\\s+\" + re.escape(section)\
+  \ + r\"\\s*$.*?(?=^##\\s+|\\Z)\",\n                         re.MULTILINE | re.DOTALL\
+  \ | re.IGNORECASE)\n    match = pattern.search(docs)\n    docs = match.group(0).strip()\
+  \ if match else f\"No '## {section}' section found.\"\nreturn_value = {\"name\"\
+  : \"scrapling\", \"docs\": docs}\n"
+---

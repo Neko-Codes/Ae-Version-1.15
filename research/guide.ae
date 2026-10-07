@@ -1,0 +1,21 @@
+---
+type: skill
+name: research-guide-2
+version: 1.0.0
+description: Skills for academic research, paper discovery, literature review, domain
+  reconnaissance, market data, content monitoring, and scientific knowledge retrieval.
+parameters:
+  section:
+    type: string
+    required: false
+    description: 'Return only this ## section of the docs.'
+config:
+  docs: ''
+execute: "import re\ndocs = (config.get(\"docs\") or \"\") if isinstance(config, dict)\
+  \ else \"\"\nsection = (params.get(\"section\") or \"\").strip() if isinstance(params,\
+  \ dict) else \"\"\nif section:\n    pattern = re.compile(r\"^##\\s+\" + re.escape(section)\
+  \ + r\"\\s*$.*?(?=^##\\s+|\\Z)\",\n                         re.MULTILINE | re.DOTALL\
+  \ | re.IGNORECASE)\n    match = pattern.search(docs)\n    docs = match.group(0).strip()\
+  \ if match else f\"No '## {section}' section found.\"\nreturn_value = {\"name\"\
+  : \"research-guide-2\", \"docs\": docs}\n"
+---

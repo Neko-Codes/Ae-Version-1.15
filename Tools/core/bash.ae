@@ -1,0 +1,15 @@
+---
+type: tool
+name: bash
+description: Run a command in the workspace with Bash after user approval.
+core: true
+effect: execute
+requires_approval: true
+parameters:
+  command:
+    type: string
+    required: true
+    description: Bash command to run.
+execute: |
+  return_value = call_builtin("bash", command=params["command"])
+---

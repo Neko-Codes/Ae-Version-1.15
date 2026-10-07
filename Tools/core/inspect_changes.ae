@@ -1,0 +1,16 @@
+---
+type: tool
+name: inspect_changes
+description: Inspect current Git status and change summary before reviewing or extending existing work.
+core: true
+effect: read
+parameters:
+  staged:
+    type: boolean
+    required: false
+    description: Whether to inspect staged changes instead of unstaged changes.
+execute: |
+  status = call_tool("git_status")
+  changes = call_tool("git_diff", staged=params.get("staged", False))
+  return_value = {"status": status, "diff_summary": changes}
+---

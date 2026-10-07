@@ -1,0 +1,32 @@
+---
+type: ae
+name: html_to_pdf
+version: 1.0.0
+description: Convert HTML/CSS content to PDF
+parameters:
+  html_file_path:
+    type: string
+    description: Path to the HTML file to convert
+  pdf_file_path:
+    type: string
+    description: Path to save the PDF file
+execute: 'import pdfkit
+
+
+  # Path to the HTML/CSS content
+
+  html_file_path = ''path/to/your/html_file.html''
+
+
+  # Path to save the PDF
+
+  pdf_file_path = ''path/to/save/pdf_file.pdf''
+
+
+  # Convert HTML to PDF
+
+  pdfkit.from_file(html_file_path, pdf_file_path)
+
+
+  return_value = f"PDF successfully created at {pdf_file_path}"'
+---

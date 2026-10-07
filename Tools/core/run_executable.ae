@@ -1,0 +1,20 @@
+---
+type: tool
+name: run_executable
+description: Run an AEX executable after inspecting it; execution requires user approval.
+core: true
+effect: execute
+requires_approval: true
+parameters:
+  name:
+    type: string
+    required: true
+    description: Exact executable name.
+  parameters:
+    type: object
+    required: false
+    description: Arguments matching the executable's schema.
+execute: |
+  result = call_builtin("run_executable", name=params["name"], parameters=params.get("parameters", {}))
+  return_value = json.loads(result)
+---

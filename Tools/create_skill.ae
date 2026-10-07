@@ -1,0 +1,165 @@
+---
+type: tool
+name: create_skill
+version: 1.0.0
+description: Create a new skill in AutomatableExecutables/Skills/<category>/. Requires user approval. This tool is itself an editable .ae file.
+parameters:
+  name:
+    type: string
+    required: true
+    description: Skill name (letters, numbers, underscore, hyphen).
+  category:
+    type: string
+    required: true
+    description: Skill category directory (e.g., 'research', 'tools', 'web').
+  description:
+    type: string
+    required: true
+    description: When to use this skill (brief description for the skill index).
+  content:
+    type: string
+    required: true
+    description: "Full .ae content with frontmatter (name, description, version, parameters, execute: |)."
+  scope:
+    type: string
+    required: false
+    description: "'local' (default, this agent only), 'shared' (all agents), or 'global'."
+execute: |
+  import re
+  import yaml
+  name = params["name"]
+  category = params["category"]
+  if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
+      raise ValueError("Skill name must contain only letters, numbers, underscores, or hyphens.")
+  if not re.fullmatch(r"[a-zA-Z0-9_-]+", category):
+      raise ValueError("Category must contain only letters, numbers, underscores, or hyphens.")
+  content = params["content"]
+  if not content.strip().startswith("---"):
+      raise ValueError("Skill content must start with YAML frontmatter (---).")
+  lines = content.splitlines()
+  if next((l for l in lines[1:] if l.strip() == "---"), None) is None:
+      raise ValueError("Skill content must have closing --- for frontmatter.")
+  # Structural validation BEFORE writing: an unloadable file is worse than no
+  # file (writes succeed, then run_skill says "not found" forever).
+  try:
+      _fm_end = next((i for i, l in enumerate(lines[1:], start=1) if l.strip() == "---"), None)
+      _fm = yaml.safe_load("\n".join(lines[1:_fm_end])) or {}
+  except Exception as _ex:
+      raise ValueError(f"Skill frontmatter is not valid YAML: {_ex}")
+  if not isinstance(_fm, dict):
+      raise ValueError("Skill frontmatter must be a YAML object.")
+  if not isinstance(_fm.get("execute", ""), str) or not _fm.get("execute", "").strip():
+      raise ValueError("Skill must have an 'execute: |' literal block with Python code (not 'execute: {code: ...}' or an empty block). See AE_SYNTAX.md.")
+  _code = _fm["execute"]
+  # Auto-repair: models constantly emit a bare `return X` at module level, but
+  # execute blocks have no enclosing function — the result variable is
+  # `return_value`. Fix up to 5 occurrences, then verify.
+  import re as _re2
+  _fixes = []
+  for _ in range(6):
+      try:
+          compile(_code, f"<skill:{name}>", "exec")
+          break
+      except SyntaxError as _ex:
+          _msg = str(_ex)
+          _ln = getattr(_ex, "lineno", None)
+          _lines = _code.splitlines()
+          if "return" in _msg and "outside function" in _msg and _ln and 1 <= _ln <= len(_lines):
+              _line = _lines[_ln - 1]
+              _m = _re2.match(r"^(\s*)return(?![\w_])", _line)
+              if _m and not _line.strip().startswith("return_value"):
+                  _rest = _line[_m.end():].strip()
+                  _lines[_ln - 1] = f"{_m.group(1)}return_value = {_rest if _rest else 'None'}"
+                  _code = "\n".join(_lines)
+                  _fixes.append(f"line {_ln}: bare return -> return_value")
+                  continue
+          raise ValueError(
+              f"Invalid Python in skill execute block: {_ex}. "
+              "Execute blocks run at MODULE level (no enclosing function): never use bare `return`; "
+              "assign `return_value = ...` instead. Read params via `params['name']`. "
+              "Minimal example:\n"
+              "execute: |\n"
+              "  text = params['text']\n"
+              "  return_value = {'verdict': text == text[::-1]}")
+  else:
+      raise ValueError("Could not auto-repair skill execute block.")
+  if _fixes:
+      _fm["execute"] = _code
+      content = "---\n" + yaml.safe_dump(_fm, sort_keys=False, allow_unicode=True) + "---\n" + "\n".join(lines[_fm_end + 1:])
+      lines = content.splitlines()
+  
+  # Static name check: compile() proves SYNTAX, not that names resolve. A bare
+  # identifier that is never assigned raises NameError at RUNTIME - a skill that
+  # is permanently broken and gets retried every turn. This is the exact bug
+  # that produced a pdf skill reading `html_content` instead of params[...].
+  import ast as _ast
+  import builtins as _builtins
+  _SANDBOX = {
+      "params", "parameters", "data", "workspace", "memory", "agent_name", "tools",
+      "skills", "events", "config", "context", "datetime", "time", "json", "call_tool",
+      "call_builtin", "call_skill", "load_skill", "emit_event", "spawn_agent",
+      "send_message", "wait_for_event", "retain", "recall", "tool_history", "exec_id",
+      "should_stop", "report", "return_value", "body", "__name__", "__file__", "__doc__",
+  }
+  try:
+      _tree = _ast.parse(_code)
+  except SyntaxError as _sex:
+      raise ValueError(f"Skill execute block does not parse: {_sex}")
+  _bound, _loaded = set(), set()
+  for _n in _ast.walk(_tree):
+      if isinstance(_n, _ast.Name):
+          if isinstance(_n.ctx, (_ast.Store, _ast.Del)):
+              _bound.add(_n.id)
+          else:
+              _loaded.add(_n.id)
+      elif isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
+          _bound.add(_n.name)
+      elif isinstance(_n, _ast.arg):
+          _bound.add(_n.arg)
+      elif isinstance(_n, (_ast.Import, _ast.ImportFrom)):
+          for _a in _n.names:
+              _bound.add((_a.asname or _a.name).split(".")[0])
+      elif isinstance(_n, _ast.ExceptHandler) and _n.name:
+          _bound.add(_n.name)
+      elif isinstance(_n, (_ast.Global, _ast.Nonlocal)):
+          _bound.update(_n.names)
+  _undefined = sorted(_loaded - _bound - set(dir(_builtins)) - _SANDBOX - {"self", "cls"})
+  if _undefined:
+      _declared = set((_fm.get("parameters") or {}).keys()) if isinstance(_fm.get("parameters"), dict) else set()
+      _paramish = [u for u in _undefined if u in _declared]
+      _hint = ""
+      if _paramish:
+          _hint = (" Parameters are NOT auto-bound into scope - read each one as "
+                   + ", ".join("params[\"" + p + "\"]" for p in _paramish) + ".")
+      raise ValueError(
+          "Skill execute block references undefined name(s): " + ", ".join(_undefined)
+          + ". Nothing injects those into scope, so this skill would raise NameError on every run." + _hint)
+
+  # Validate the skill name in frontmatter matches the provided name
+  # Also auto-add type: skill if missing
+  frontmatter_end = next((i for i, l in enumerate(lines[1:], start=1) if l.strip() == "---"), None)
+  if frontmatter_end is not None:
+      fm = yaml.safe_load("\n".join(lines[1:frontmatter_end])) or {}
+      if not isinstance(fm, dict):
+          raise ValueError("Skill frontmatter must be a YAML object.")
+      fm_name = str(fm.get("name", "")).strip()
+      if fm_name and fm_name != name:
+          raise ValueError(f"Skill name in frontmatter ('{fm_name}') must match provided name ('{name}').")
+      # Auto-add type: skill if missing
+      if "type" not in fm:
+          lines.insert(frontmatter_end, "type: skill")
+          content = "\n".join(lines)
+  
+  path = f"Skills/{category}/{name}/skill.ae"
+  scope = params.get("scope")
+  _scope = ({"scope": scope} if scope else {})
+  # ae_write creates parent directories automatically via _AeWrite
+  try:
+      call_builtin("ae_read", path=path, **_scope)
+      raise ValueError(f"Skill already exists: {category}/{name}")
+  except ValueError as ex:
+      if "already exists" in str(ex):
+          raise
+  return_value = {"saved": call_builtin("ae_write", path=path, content=content, **_scope), "name": name,
+                  "invoke": f"Run {name} via run_skill (it is a SKILL: run_skill {name} with its parameters). Discover it with list_skills starting next round."}
+---

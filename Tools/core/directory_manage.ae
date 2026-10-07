@@ -1,0 +1,72 @@
+---
+type: tool
+name: directory_manage
+description: "Create, delete, or list workspace paths. Deletes are scoped to user content only — framework paths are refused. Missing paths raise errors (never silent ok)."
+core: true
+effect: write
+parameters:
+  action:
+    type: string
+    required: true
+    enum: ["create", "delete", "list", "exists"]
+    description: "Action to perform (create, delete, list, exists)."
+  path:
+    type: string
+    required: true
+    description: "Workspace-relative path."
+  recursive:
+    type: boolean
+    required: false
+    default: true
+    description: "For delete: remove non-empty directories. For create: create parents."
+execute: |
+  import os as _os
+  import shutil as _shutil
+  from pathlib import Path as _P
+
+  action = params["action"]
+  path = str(params["path"] or "").strip()
+  recursive = params.get("recursive", True)
+
+  _root = _P(workspace).resolve()
+  _t = (_root / path).resolve()
+  if _t != _root and _root not in _t.parents:
+      raise ValueError("Path must stay inside the workspace: " + path)
+  _FRAMEWORK = {"AutomatableExecutables", ".ae_sessions", "Scripts", "Agents", ".env", ".git", ".venv", "ae.bat"}
+  try:
+      _rel = _t.relative_to(_root).as_posix()
+  except Exception:
+      _rel = ""
+  if any(_seg in _FRAMEWORK for _seg in _rel.split("/")):
+      raise ValueError("Refusing to touch framework path '" + _rel + "' — deletes are scoped to workspace user content.")
+
+  if action == "create":
+      _os.makedirs(_t, exist_ok=True)
+      return_value = {"action": "create", "path": path, "status": "created", "recursive": recursive}
+
+  elif action == "delete":
+      if not _os.path.lexists(_t):
+          raise ValueError("Nothing to delete, path does not exist: " + path)
+      if _os.path.isfile(_t) or _os.path.islink(_t):
+          _os.remove(_t)
+      elif _os.path.isdir(_t):
+          if recursive:
+              _shutil.rmtree(_t)
+          else:
+              _os.rmdir(_t)
+      else:
+          raise ValueError("Not a file or directory, refusing: " + path)
+      return_value = {"action": "delete", "path": path, "status": "deleted"}
+
+  elif action == "list":
+      if _os.path.isdir(_t):
+          items = _os.listdir(_t)
+          dirs = [i for i in items if _os.path.isdir(_os.path.join(_t, i))]
+          files = [i for i in items if _os.path.isfile(_os.path.join(_t, i))]
+          return_value = {"action": "list", "path": path, "dirs": dirs, "files": files, "count": len(items)}
+      else:
+          raise ValueError("Not a directory: " + path)
+
+  elif action == "exists":
+      return_value = {"action": "exists", "path": path, "exists": _os.path.exists(_t)}
+---

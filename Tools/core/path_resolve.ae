@@ -1,0 +1,41 @@
+---
+type: tool
+name: path_resolve
+description: Convert relative paths to absolute Windows/Linux paths for consistency. Normalizes separators.
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  path:
+    type: string
+    required: true
+    description: Path to resolve (relative or absolute).
+  base:
+    type: string
+    required: false
+    default: "."
+    description: Base directory for relative paths.
+  style:
+    type: string
+    required: false
+    default: "native"
+    enum: ["native", "posix", "windows"]
+    description: Output path style.
+execute: |
+  import os as _os
+  path = params["path"]
+  base = params.get("base", ".")
+  style = params.get("style", "native")
+
+  full = _os.path.join(_os.path.abspath(base), path) if not _os.path.isabs(path) else _os.path.abspath(path)
+  norm = _os.path.normpath(full)
+
+  if style == "posix":
+    out = norm.replace("\\", "/")
+  elif style == "windows":
+    out = norm.replace("/", "\\")
+  else:
+    out = norm
+
+  return_value = {"original": path, "base": base, "resolved": out, "style": style, "is_absolute": _os.path.isabs(out), "exists": _os.path.exists(norm)}
+---

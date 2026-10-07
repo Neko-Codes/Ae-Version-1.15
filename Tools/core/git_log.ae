@@ -1,0 +1,15 @@
+---
+type: tool
+name: git_log
+description: Read recent workspace commits.
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  limit:
+    type: integer
+    required: false
+    description: Number of commits, capped by the underlying tool.
+execute: |
+  return_value = call_builtin("git_log", limit=params.get("limit", 10))
+---

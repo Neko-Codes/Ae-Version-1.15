@@ -1,0 +1,13 @@
+---
+name: final_test
+description: A skill that returns the input query
+type: skill
+parameters:
+  query:
+    type: string
+    description: The input query to return
+---
+
+```python
+return_value = params['query']
+```

@@ -1,0 +1,36 @@
+---
+type: tool
+name: file_write
+description: "Create or overwrite files (supports text, code, JSON). Returns success with path and bytes written."
+version: "1.0.0"
+core: true
+effect: write
+permissions: ["write_files"]
+parameters:
+  path:
+    type: string
+    required: true
+    description: "Workspace-relative file path."
+  content:
+    type: string
+    required: true
+    description: "File content to write."
+  encoding:
+    type: string
+    required: false
+    default: "utf-8"
+    description: "Text encoding (utf-8, latin-1, etc.)."
+  create_dirs:
+    type: boolean
+    required: false
+    default: true
+    description: "Create parent directories if they don't exist."
+execute: |
+  result = call_builtin("write_file", path=params["path"], content=params["content"])
+  import json as _json
+  try:
+    data = _json.loads(result)
+    return_value = data
+  except Exception:
+    return_value = {"path": params["path"], "bytes": len(params["content"]), "status": "written"}
+---

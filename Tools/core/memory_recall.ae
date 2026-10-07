@@ -1,0 +1,19 @@
+---
+type: tool
+name: memory_recall
+description: Search durable shared AE memory for facts relevant to a query.
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  query:
+    type: string
+    required: true
+    description: Query for relevant memories.
+  limit:
+    type: integer
+    required: false
+    description: Maximum memories to return.
+execute: |
+  return_value = json.loads(call_builtin("memory_recall", query=params["query"], limit=params.get("limit", 5)))
+---

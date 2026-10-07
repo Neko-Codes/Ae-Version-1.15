@@ -1,0 +1,79 @@
+---
+type: skill
+name: deep_reason
+description: Diagnose WHY your current approach is failing. Summarizes every tool you used recently (counts, errors, repeats) plus recent tool output, and forces a written diagnosis with a different next step. Call it the moment you feel stuck or are told to.
+version: 1.0.0
+parameters:
+  focus:
+    type: string
+    required: false
+    default: ""
+    description: What goal is blocked (one sentence). Helps focus the diagnosis.
+  window:
+    type: integer
+    required: false
+    default: 30
+    description: How many recent tool calls to analyze.
+execute: |
+  focus = str(params.get("focus", "") or "")
+  try:
+      window = max(5, min(int(params.get("window", 30)), 200))
+  except Exception:
+      window = 30
+
+  history = []
+  try:
+      history = [h for h in (tool_history(window) or [])
+                 if isinstance(h, dict) and h.get("skill") != "deep_reason"]
+  except Exception:
+      history = []
+
+  recent_output = ""
+  try:
+      if memory is not None and hasattr(memory, "GetToolContext"):
+          recent_output = str(memory.GetToolContext(10) or "")
+  except Exception:
+      recent_output = ""
+
+  by_tool = {}
+  for h in history:
+      if not isinstance(h, dict):
+          continue
+      t = str(h.get("tool", "?"))
+      e = by_tool.setdefault(t, {"calls": 0, "errors": 0})
+      e["calls"] += 1
+      if h.get("error"):
+          e["errors"] += 1
+
+  ordered = sorted(by_tool.items(), key=lambda kv: kv[1]["calls"], reverse=True)
+  loops = [t for t, v in ordered if v["calls"] >= 3]
+  failing = [t for t, v in ordered if v["errors"] > 0]
+
+  lines = []
+  lines.append(f"Blocked goal: {focus}" if focus else "Blocked goal: (not stated — state it in your diagnosis)")
+  lines.append(f"Tools used in window: {len(history)} calls across {len(by_tool)} tools.")
+  for t, v in ordered[:10]:
+      flag = " <-- LOOPING" if t in loops else (" <-- failing" if t in failing else "")
+      lines.append(f"  - {t}: x{v['calls']}, errors x{v['errors']}{flag}")
+  if recent_output:
+      lines.append("Recent tool output (newest last):")
+      lines.append(recent_output[:3000])
+
+  return_value = {
+      "display": "deep-reason",
+      "focus": focus,
+      "total_calls": len(history),
+      "by_tool": {t: v for t, v in ordered},
+      "likely_loops": loops,
+      "failing_tools": failing,
+      "brief": "\n".join(lines),
+      "instruction": (
+          "You MUST now write a diagnosis BEFORE any other tool call: "
+          "(1) what goal is blocked, "
+          "(2) which calls failed and WHY (quote the error texts above — do not guess), "
+          "(3) which assumption of yours was wrong, "
+          "(4) the ONE different approach to try next. "
+          "Then try exactly that. Do NOT repeat any call flagged LOOPING above."
+      ),
+  }
+---

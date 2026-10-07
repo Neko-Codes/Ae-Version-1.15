@@ -1,0 +1,214 @@
+---
+type: tool
+name: vision
+description: "Free keyless sight: 18 ASCII views (tone, edges, big-outline masses, Floyd-Steinberg diffused, braille, real-color map, zoom, red+blue channels, 9 quadrant crops) + OBJECT masses with positions + light geometry + palette + brightest spots. Reader triangulates. All in this file."
+effect: read
+parameters:
+  path:
+    type: string
+    required: false
+    description: Workspace-relative image path (png/jpg/webp/gif). Absolute local paths also accepted.
+  url:
+    type: string
+    required: false
+    description: Online image URL to download and read.
+  question:
+    type: string
+    required: false
+    default: What is in this image?
+    description: What to answer about the image.
+execute: |
+  def execute(params):
+      import io, urllib.request, urllib.parse as _parse, statistics as _st
+      from PIL import Image as _I, ImageOps as _Ops, ImageEnhance as _Enh, ImageFilter as _F
+      Question = str(params.get("question", "") or "What is in this image?").strip()[:300]
+      _url = str(params.get("url", "") or "").strip()
+      _path = str(params.get("path", "") or "").strip()
+      if _url:
+          _p = _parse.urlparse(_url)
+          if _p.scheme not in {"http", "https"} or not _p.netloc:
+              return {"error": "url must be a public http or https URL."}
+          with urllib.request.urlopen(urllib.request.Request(_url, headers={"User-Agent": "Mozilla/5.0"}), timeout=30) as _r:
+              _blob = _r.read(20_000_001)
+          if len(_blob) > 20_000_000:
+              return {"error": "Image exceeds the 20 MB limit."}
+          try:
+              _img = _I.open(io.BytesIO(_blob))
+          except Exception:
+              return {"error": "URL did not return a readable image."}
+          _label = _url
+      elif _path:
+          _clean = _path.strip()
+          if len(_clean) >= 2 and _clean[0] == _clean[-1] and _clean[0] in "\"'":
+              _clean = _clean[1:-1].strip()
+          from pathlib import Path as _P
+          _root = _P(workspace).resolve()
+          _abs = _P(_clean)
+          if _abs.is_absolute() and _abs.is_file():
+              _t = _abs.resolve()
+              _label = str(_t)
+          else:
+              _t = (_root / _clean).resolve()
+              if _t != _root and _root not in _t.parents:
+                  return {"error": "Path must stay inside the workspace."}
+              _label = _t.relative_to(_root).as_posix() if (_root in _t.parents or _t == _root) else str(_t)
+          if not _t.is_file():
+              return {"error": "File not found: " + _path}
+          try:
+              _img = _I.open(_t)
+          except Exception:
+              return {"error": "Not a readable image: " + _path}
+      else:
+          return {"error": "Provide path (workspace image) or url (online image)."}
+      try:
+          _W, _H = _img.size
+          if _W <= 0 or _H <= 0:
+              return {"error": "Empty image."}
+          _ramp = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. "
+          def _A(_src, _w, _cap):
+              _h = max(1, min(_cap, round(_src.size[1] * _w / _src.size[0] * 0.55)))
+              _s = _src.convert("L").resize((_w, _h))
+              _px = list(_s.getdata())
+              return ["".join(_ramp[min(p * len(_ramp) // 256, len(_ramp) - 1)] for p in _px[y * _w:(y + 1) * _w]) for y in range(_h)]
+          _rgb = _img.convert("RGB")
+          _gray = _img.convert("L")
+          _enh = _Enh.Contrast(_Ops.autocontrast(_gray, cutoff=1)).enhance(1.4)
+          _basics = {"black": (0, 0, 0), "white": (255, 255, 255), "gray": (128, 128, 128), "red": (200, 30, 30), "orange": (230, 130, 20), "yellow": (230, 210, 60), "green": (40, 150, 60), "cyan": (60, 180, 200), "blue": (50, 90, 200), "purple": (130, 60, 170), "brown": (130, 85, 45), "pink": (230, 150, 180)}
+          def _cname(_col):
+              _bn, _bd = "gray", 1e18
+              for _n, _ref in _basics.items():
+                  _d = sum((a - b) ** 2 for a, b in zip(_col, _ref))
+                  if _d < _bd:
+                      _bn, _bd = _n, _d
+              return _bn
+          _glyph = {"black": "@", "white": " ", "gray": "%", "red": "R", "orange": "O", "yellow": "Y", "green": "G", "cyan": "C", "blue": "B", "purple": "P", "brown": "N", "pink": "I"}
+          _V = []
+          _V.append("VIEW 1 — TONE (50 cols):\n" + "\n".join(_A(_enh, 50, 13)))
+          _V.append("VIEW 2 — EDGES (50 cols; bright = boundaries):\n" + "\n".join(_A(_Ops.autocontrast(_enh.filter(_F.FIND_EDGES), cutoff=1), 50, 13)))
+          _mg = _enh.resize((30, 15))
+          _mp = list(_mg.getdata())
+          _mean = sum(_mp) / len(_mp)
+          _V.append("VIEW 3 — MASSES (big shape outlines, 30 cells wide; XX = dark mass, .. = light mass):\n" + "\n".join("".join("XX" if _mp[y * 30 + x] <= _mean else ".." for x in range(30)) for y in range(15)))
+          def _FS(_src, _w, _cap):
+              _h = max(1, min(_cap, round(_src.size[1] * _w / _src.size[0] * 0.55)))
+              _s = _src.convert("L").resize((_w, _h))
+              _buf = [float(p) for p in _s.getdata()]
+              _L = len(_ramp)
+              _out = []
+              for _y in range(_h):
+                  _row = []
+                  for _x in range(_w):
+                      _i = _y * _w + _x
+                      _old = _buf[_i]
+                      _ni = max(0, min(_L - 1, int(_old / 256.0 * _L + 0.5)))
+                      _row.append(_ramp[_ni])
+                      _err = _old - _ni * 255.0 / max(1, _L - 1)
+                      if _x + 1 < _w:
+                          _buf[_i + 1] += _err * 7.0 / 16.0
+                      if _y + 1 < _h:
+                          if _x > 0:
+                              _buf[_i + _w - 1] += _err * 3.0 / 16.0
+                          _buf[_i + _w] += _err * 5.0 / 16.0
+                          if _x + 1 < _w:
+                              _buf[_i + _w + 1] += _err * 1.0 / 16.0
+                  _out.append("".join(_row))
+              return _out
+          _V.append("VIEW 4 — DIFFUSED (Floyd-Steinberg error diffusion, most photographic mono, 50 cols):\n" + "\n".join(_FS(_enh, 50, 13)))
+          _bw, _bh = 50, 13
+          _bs = _enh.resize((100, 52))
+          _bp = list(_bs.getdata())
+          _bmean = sum(_bp) / len(_bp)
+          _bl = []
+          for _by in range(_bh):
+              _ch = []
+              for _bx in range(_bw):
+                  _bits = 0
+                  for _dy in range(4):
+                      for _dx in range(2):
+                          if _bp[(_by * 4 + _dy) * 100 + _bx * 2 + _dx] > _bmean:
+                              _bits |= (0x01 if (_dx, _dy) == (0, 0) else 0x02 if (_dx, _dy) == (0, 1) else 0x04 if (_dx, _dy) == (0, 2) else 0x08 if (_dx, _dy) == (1, 0) else 0x10 if (_dx, _dy) == (1, 1) else 0x20 if (_dx, _dy) == (1, 2) else 0x40 if (_dx, _dy) == (0, 3) else 0x80)
+                  _ch.append(chr(0x2800 + _bits))
+              _bl.append("".join(_ch))
+          _V.append("VIEW 5 — BRAILLE (densest mono, 50x13):\n" + "\n".join(_bl))
+          _rgb50 = list(_rgb.resize((50, 13)).getdata())
+          _V.append("VIEW 6 — COLORMAP (real colors as letters, 50 cols; @ black, space white, % gray, N brown, R red, O orange, Y yellow, G green, C cyan, B blue, P purple, I pink):\n" + "\n".join("".join(_glyph[_cname(_rgb50[y * 50 + x])] for x in range(50)) for y in range(13)))
+          _V.append("VIEW 7 — DETAIL (center 50% zoom, 80 cols):\n" + "\n".join(_A(_enh.crop((_W // 4, _H // 4, 3 * _W // 4, 3 * _H // 4)), 80, 10)))
+          _R, _G, _B = _rgb.split()
+          _V.append("VIEW 8 — RED CHANNEL (warm things glow here; cold stone flattens, 50 cols):\n" + "\n".join(_A(_R, 50, 13)))
+          _V.append("VIEW 9 — BLUE CHANNEL (cool/reflected light lives here, 50 cols):\n" + "\n".join(_A(_B, 50, 13)))
+          _Q = []
+          for _qy in range(3):
+              for _qx in range(3):
+                  _crop = _enh.crop((_W * _qx // 3, _H * _qy // 3, _W * (_qx + 1) // 3, _H * (_qy + 1) // 3))
+                  _Q.append("QUADRANT %d (row %d col %d of 3x3, 28 cols):\n" % (len(_Q) + 10, _qy + 1, _qx + 1) + "\n".join(_A(_crop, 28, 8)))
+          _V.extend(_Q)
+          _ow, _oh = 48, 28
+          _obin = [1 if p > _mean else 0 for p in _enh.resize((_ow, _oh)).getdata()]
+          def _blobs(_fg):
+              _seen = [False] * (_ow * _oh)
+              _found = []
+              for _s in range(_ow * _oh):
+                  if _seen[_s] or (_obin[_s] == 1) != _fg:
+                      continue
+                  _stack, _cells = [_s], []
+                  _seen[_s] = True
+                  while _stack:
+                      _c = _stack.pop()
+                      _cells.append(_c)
+                      _cx, _cy = _c % _ow, _c // _ow
+                      for _nx, _ny in ((_cx - 1, _cy), (_cx + 1, _cy), (_cx, _cy - 1), (_cx, _cy + 1)):
+                          if 0 <= _nx < _ow and 0 <= _ny < _oh:
+                              _n = _ny * _ow + _nx
+                              if not _seen[_n] and (_obin[_n] == 1) == _fg:
+                                  _seen[_n] = True
+                                  _stack.append(_n)
+                  if len(_cells) >= 10:
+                      _found.append(_cells)
+              return sorted(_found, key=len, reverse=True)[:4]
+          def _zone(_cells):
+              _mx = sum(c % _ow for c in _cells) / len(_cells) / _ow
+              _my = sum(c // _ow for c in _cells) / len(_cells) / _oh
+              return ("upper-" if _my < 0.33 else "lower-" if _my > 0.67 else "") + ("left" if _mx < 0.33 else "right" if _mx > 0.67 else "center")
+          _ol = []
+          for _cells in _blobs(True):
+              _ol.append("light mass %d%% at %s" % (round(100 * len(_cells) / (_ow * _oh)), _zone(_cells)))
+          for _cells in _blobs(False):
+              _ol.append("dark mass %d%% at %s" % (round(100 * len(_cells) / (_ow * _oh)), _zone(_cells)))
+          _V.append("OBJECTS (connected light/dark masses with positions — quote these, not vibes):\n" + ("\n".join("- " + _o for _o in _ol[:6]) if _ol else "- no coherent masses (uniform texture)"))
+          _proj = _gray.resize((24, 16))
+          _pp = list(_proj.getdata())
+          _bars = " ▁▂▃▄▅▆▇█"
+          _colmeans = [sum(_pp[y * 24 + x] for y in range(16)) / 16.0 for x in range(24)]
+          _rowmeans = [sum(_pp[y * 24:(y + 1) * 24]) / 24.0 for y in range(16)]
+          _V.append("LIGHT GEOMETRY (mean brightness " + str(round(sum(_pp) / len(_pp))) + "/255) — column brightness L→R (light shaft = bright run):\n[" + "".join(_bars[min(int(c / 256.0 * 8), 7)] for c in _colmeans) + "]\nrow brightness top→bottom (horizon/ground split):\n[" + "".join(_bars[min(int(c / 256.0 * 8), 7)] for c in _rowmeans) + "]")
+          _tiny = _rgb.resize((48, 48))
+          _counts = _tiny.getcolors(48 * 48) or []
+          _total = sum(c for c, _ in _counts) or 1
+          _basics = {"black": (0, 0, 0), "white": (255, 255, 255), "gray": (128, 128, 128), "red": (200, 30, 30), "orange": (230, 130, 20), "yellow": (230, 210, 60), "green": (40, 150, 60), "cyan": (60, 180, 200), "blue": (50, 90, 200), "purple": (130, 60, 170), "brown": (130, 85, 45), "pink": (230, 150, 180)}
+          _bk = {}
+          for _c, _col in _counts:
+              _bn, _bd = "gray", 1e18
+              for _n, _ref in _basics.items():
+                  _d = sum((a - b) ** 2 for a, b in zip(_col, _ref))
+                  if _d < _bd:
+                      _bn, _bd = _n, _d
+              _e = _bk.get(_bn, [0, [0, 0, 0]])
+              _e[0] += _c
+              _e[1] = [x + y for x, y in zip(_e[1], _col)]
+              _bk[_bn] = _e
+          _V.append("COLORS (real, by coverage): " + ", ".join("%s #%02x%02x%02x %d%%" % (_n, round(_s[0] / max(1, _c)), round(_s[1] / max(1, _c)), round(_s[2] / max(1, _c)), round(100 * _c / _total)) for _n, (_c, _s) in sorted(_bk.items(), key=lambda kv: kv[1][0], reverse=True)[:6]))
+          _cells = _rgb.resize((12, 7))
+          _cpx = list(_cells.getdata())
+          _bright = sorted(range(84), key=lambda i: sum(_cpx[i]), reverse=True)[:3]
+          _V.append("BRIGHTEST SPOTS (12x7 grid cells, x=col 0-11 L→R, y=row 0-6 top→bottom): " + ", ".join("(x=%d,y=%d)" % (b % 12, b // 12) for b in _bright))
+          _V.append("DISCERN — you are the vision model. Q: " + Question + " Read ALL views below, then: (1) Categorize scene type. (2) EXACTLY 5 ranked possibilities that DIFFER in subject (not copies with different quadrants); each cites view NUMBERS + quadrant locations + ONE quoted token (a glyph run, a mass %, a hex). (3) Quote the COLORS line verbatim, then name which palette colors SUPPORT your top guess and which ABSENT colors RULE OUT alternatives (no green = not forest/trees; no blue/cyan = not water/sky/ocean; no white = not snow). Person/people/figure claims additionally REQUIRE head-limb-torso structure quoted from the EDGES view — a bright blob is an object, never a person. (4) Commit to ONE (high only if 3+ views agree). (5) FINAL VERDICT — write it the way a person describing the sight would: name the subject, one concrete visible detail, your confidence (high/medium/low), and ONE ruled-out alternative with its reason. No hex codes, no glyph runs, no view numbers in the verdict — evidence stays in steps 2-3. Reciting packet tokens without this verdict = failure.")
+          _V.insert(0, _V.pop())
+          return "Vision x18 for %s (%dx%d):\n\n" % (_label, _W, _H) + "\n\n".join(_V)
+      finally:
+          try:
+              _img.close()
+          except Exception:
+              pass
+  return_value = execute(params)
+  return_value
+---

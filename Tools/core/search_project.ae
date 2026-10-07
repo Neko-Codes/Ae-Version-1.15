@@ -1,0 +1,32 @@
+---
+type: tool
+name: search_project
+description: "Search project text and return matching file locations and lines."
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  query:
+    type: string
+    required: true
+    description: Literal text to find.
+  path:
+    type: string
+    required: false
+    description: Workspace-relative directory to search; defaults to the workspace root.
+  glob:
+    type: string
+    required: false
+    description: Filename glob, for example '*.py'.
+  case_sensitive:
+    type: boolean
+    required: false
+    description: Match letter case exactly.
+  max_results:
+    type: integer
+    required: false
+    description: Maximum matching lines.
+execute: |
+  matches = call_tool("search_files", query=params["query"], path=params.get("path", "."), glob=params.get("glob", "*"), case_sensitive=params.get("case_sensitive", False), max_results=params.get("max_results", 25))
+  return_value = json.loads(matches)
+---

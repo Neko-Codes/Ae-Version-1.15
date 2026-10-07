@@ -1,0 +1,58 @@
+---
+type: tool
+name: update_entity
+version: 1.0.0
+description: Update an existing AE entity (description, parameters, execute_code, trigger, etc.). Cannot change name/type. Requires user approval. This tool is itself an editable .ae file.
+parameters:
+  entity_type:
+    type: string
+    required: true
+    description: One of tool, skill, executable, event, core_tool.
+  name:
+    type: string
+    required: true
+    description: Entity name (for skills, name or category path).
+  changes:
+    type: object
+    required: true
+    description: Fields to update.
+execute: |
+  import yaml
+  etype = params["entity_type"]
+  name = params["name"]
+  changes = params.get("changes") or {}
+  for key in changes:
+      if key in ("name", "type"):
+          raise ValueError(f"Cannot change {key} of an existing entity.")
+  if etype == "core_tool":
+      path = f"Tools/core/{name}.ae"
+  elif etype == "tool":
+      path = f"Tools/{name}.ae"
+  elif etype == "executable":
+      path = f"Executables/{name}.ae"
+  elif etype == "event":
+      path = f"Events/{name}.ae"
+  elif etype == "skill":
+      inv = json.loads(call_builtin("ae_list"))
+      match = next((s for s in inv.get("skills", []) if s.get("name") == name or s.get("category") == name or s.get("category", "").endswith("/" + name)), None)
+      if match is None or not match.get("path"):
+          raise ValueError(f"Skill not found: {name}.")
+      path = match["path"]
+  else:
+      raise ValueError(f"Unknown entity type: {etype}.")
+  content = call_builtin("ae_read", path=path)
+  lines = content.splitlines()
+  if not lines or lines[0].strip() != "---":
+      raise ValueError("Entity file must have YAML frontmatter.")
+  end = next((i for i, l in enumerate(lines[1:], 1) if l.strip() == "---"), None)
+  if end is None:
+      raise ValueError("Entity file must have closing ---.")
+  metadata = yaml.safe_load("\n".join(lines[1:end])) or {}
+  body = "\n".join(lines[end + 1:]) if end + 1 < len(lines) else ""
+  for key, value in changes.items():
+      metadata[key] = value
+  new_content = "---\n" + yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True) + "---\n"
+  if etype == "skill" and body:
+      new_content += body + "\n"
+  return_value = call_builtin("ae_write", path=path, content=new_content)
+---

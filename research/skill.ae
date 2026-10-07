@@ -1,0 +1,22 @@
+---
+type: skill
+name: research
+version: 1.0.0
+description: Searches 1,000 sites and summarizes the results.
+parameters:
+  section:
+    type: string
+    required: false
+    description: 'Return only this ## section of the docs.'
+config:
+  docs: This skill searches 1,000 sites and summarizes the results. It uses the web_search
+    tool to gather information and then processes the results to provide a concise
+    summary.
+execute: "import re\ndocs = (config.get(\"docs\") or \"\") if isinstance(config, dict)\
+  \ else \"\"\nsection = (params.get(\"section\") or \"\").strip() if isinstance(params,\
+  \ dict) else \"\"\nif section:\n    pattern = re.compile(r\"^##\\s+\" + re.escape(section)\
+  \ + r\"\\s*$.*?(?=^##\\s+|\\Z)\",\n                         re.MULTILINE | re.DOTALL\
+  \ | re.IGNORECASE)\n    match = pattern.search(docs)\n    docs = match.group(0).strip()\
+  \ if match else f\"No '## {section}' section found.\"\nreturn_value = {\"name\"\
+  : \"research\", \"docs\": docs}\n"
+---

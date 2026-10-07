@@ -1,0 +1,80 @@
+---
+type: tool
+name: url_fetch
+description: Fetch raw content from HTTP/HTTPS endpoints (GET/POST, headers, JSON). For APIs and raw data.
+core: true
+effect: external
+parameters:
+  url:
+    type: string
+    required: true
+    description: URL to fetch.
+  method:
+    type: string
+    required: false
+    default: "GET"
+    enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"]
+    description: HTTP method.
+  headers:
+    type: object
+    required: false
+    description: Extra headers.
+  body:
+    type: string
+    required: false
+    description: POST/PUT/PATCH body.
+  timeout_seconds:
+    type: integer
+    required: false
+    default: 30
+    description: Request timeout.
+  max_chars:
+    type: integer
+    required: false
+    default: 100000
+    description: Max response chars.
+execute: |
+  import urllib.request as _request
+  import urllib.parse as _parse
+  import json as _json
+
+  url = params["url"]
+  method = params.get("method", "GET").upper()
+  headers = params.get("headers", {})
+  body = params.get("body")
+  timeout = params.get("timeout_seconds", 30)
+  max_chars = params.get("max_chars", 100000)
+
+  parsed = _parse.urlparse(url)
+  if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+    return_value = {"url": url, "error": "Invalid URL: must be http or https", "status": "error"}
+  else:
+    data = None
+    if body is not None:
+      if isinstance(body, (dict, list)):
+        data = _json.dumps(body).encode("utf-8")
+        if "Content-Type" not in headers:
+          headers["Content-Type"] = "application/json"
+      else:
+        data = body.encode("utf-8")
+
+    req_headers = {"User-Agent": "AE-Agent/1.0", "Accept": "*/*"}
+    req_headers.update(headers)
+
+    req = _request.Request(url, data=data, headers=req_headers, method=method)
+
+    try:
+      with _request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read(2000000)
+        content = raw.decode("utf-8", errors="replace")
+        status_code = resp.code
+        resp_headers = dict(resp.headers)
+      if len(content) > max_chars:
+        content = content[:max_chars] + "\n\n[TRUNCATED: " + str(len(content) - max_chars) + " more chars]"
+      return_value = {"url": url, "method": method, "status_code": status_code, "headers": resp_headers, "content": content, "chars": len(content), "status": "success"}
+    except _request.HTTPError as e:
+      body = e.read(2000).decode("utf-8", errors="replace")
+      return_value = {"url": url, "method": method, "status_code": e.code, "error": "HTTP " + str(e.code) + ": " + body, "status": "error"}
+    except Exception as e:
+      return_value = {"url": url, "method": method, "error": str(e), "status": "error"}
+---

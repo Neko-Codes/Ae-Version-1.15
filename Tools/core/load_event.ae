@@ -1,0 +1,16 @@
+---
+type: tool
+name: load_event
+description: Read a complete AE Event definition.
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  name:
+    type: string
+    required: true
+    description: Exact event name.
+execute: |
+  raw = call_builtin("load_event", name=params["name"])
+  return_value = raw
+---

@@ -1,0 +1,10 @@
+---
+type: tool
+name: list_all_entities
+version: 1.0.0
+effect: read
+description: List all Tools, Skills, Executables, and Events with their metadata. This tool is itself an editable .ae file.
+parameters: {}
+execute: |
+  return_value = json.loads(call_builtin("ae_list"))
+---

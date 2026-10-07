@@ -1,0 +1,9 @@
+---
+type: skill
+name: quote_tool_output
+description: Remind future-you to always quote tool output verbatim.
+version: 1.0
+parameters: {}
+execute: |
+    print("Always quote tool output verbatim.")
+---

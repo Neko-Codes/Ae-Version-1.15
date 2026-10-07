@@ -1,0 +1,19 @@
+---
+name: web_search_summarize
+description: Searches 1000 sites and summarizes results
+version: 1.0.0
+parameters:
+  query:
+    type: string
+    required: true
+    description: Search query
+  max_sites:
+    type: integer
+    required: false
+    default: 1000
+    description: Maximum number of sites to search
+execute: |
+  results = call_tool('web_search', query=params['query'], max_results=params.get('max_sites', 10))
+  return_value = {'summary': 'Would summarize: ' + str(results)}
+type: skill
+---

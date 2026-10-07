@@ -1,0 +1,37 @@
+---
+type: tool
+name: calculate
+version: 1.1.0
+effect: read
+description: "Perform basic arithmetic operations. Returns result-number JSON: quote it verbatim."
+parameters:
+  num1:
+    type: number
+    description: First number
+  num2:
+    type: number
+    description: Second number
+  operation:
+    type: string
+    description: Operation to perform (add, subtract, multiply, divide)
+execute: |
+  try:
+      _a = float(params["num1"])
+      _b = float(params["num2"])
+  except (TypeError, ValueError):
+      raise ValueError("num1 and num2 must be numbers.")
+  _op = params["operation"]
+  if _op == "add":
+      _r = _a + _b
+  elif _op == "subtract":
+      _r = _a - _b
+  elif _op == "multiply":
+      _r = _a * _b
+  elif _op == "divide":
+      if _b == 0:
+          raise ValueError("Cannot divide by zero")
+      _r = _a / _b
+  else:
+      raise ValueError("Invalid operation")
+  return_value = {"result": _r}
+---

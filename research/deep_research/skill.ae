@@ -1,0 +1,108 @@
+---
+type: skill
+name: deep_research
+version: "1.0.0"
+description: "Performs iterative web research on a topic, synthesizes findings from multiple sources, and saves a structured report to memory and disk."
+author: "Axiom Core"
+tags: ["research", "analysis", "web", "synthesis"]
+depends_on:
+  - name: web_search
+    type: TOOL
+    version: ">=1.0.0"
+  - name: web_scrape
+    type: TOOL
+    version: ">=1.0.0"
+  - name: file_write
+    type: TOOL
+    version: ">=1.0.0"
+  - name: memory_retain
+    type: TOOL
+    version: ">=1.0.0"
+permissions:
+  - network
+  - read_files
+  - write_files
+  - read_memory
+  - write_memory
+parameters:
+  topic:
+    type: string
+    required: true
+    description: "The main subject or question to research."
+  depth:
+    type: integer
+    required: false
+    default: 3
+    description: "Number of search iterations (1-5). Default is 3."
+  output_format:
+    type: string
+    required: false
+    default: "markdown"
+    enum: ["markdown", "json", "txt"]
+    description: "Format of the final report."
+emits:
+  - research_started
+  - source_found
+  - research_complete
+execute: |
+  import json as _json
+  import datetime as _dt
+  import re as _re
+
+  topic = params["topic"]
+  depth = int(params.get("depth", 3))
+  output_format = params.get("output_format", "markdown")
+  findings = []
+
+  try:
+    emit_event("research_started", {"topic": topic, "depth": depth})
+  except Exception:
+    pass
+
+  for i in range(depth):
+    search_query = topic + (" more details" if i > 0 else "")
+    search_results = call_tool("web_search", query=search_query, max_results=5)
+    urls = _re.findall(r'URL: (https?://[^\s]+)', search_results)
+    for url in urls[:3]:
+      scrape_result = call_tool("web_scrape", url=url, max_chars=3000)
+      try:
+        scraped = _json.loads(scrape_result)
+        content = scraped.get("content", "")
+      except Exception:
+        content = scrape_result
+      if content:
+        findings.append({
+          "url": url,
+          "content_snippet": content[:500],
+          "timestamp": _dt.datetime.now().isoformat()
+        })
+        try:
+          emit_event("source_found", {"url": url, "iteration": i + 1})
+        except Exception:
+          pass
+
+  report = {"topic": topic, "date": _dt.datetime.now().isoformat(), "sources_analyzed": len(findings), "findings": findings}
+  if output_format == "markdown":
+    report_text = f"# Research Report: {topic}\n\n**Date:** {report['date']}\n**Sources Analyzed:** {len(findings)}\n\n"
+    for item in findings:
+      report_text += f"### Source: {item['url']}\n{item['content_snippet']}...\n\n"
+  elif output_format == "json":
+    report_text = _json.dumps(report, indent=2)
+  else:
+    report_text = f"Research Report: {topic}\nDate: {report['date']}\nSources: {len(findings)}\n\n"
+    for item in findings:
+      report_text += f"- {item['url']}: {item['content_snippet']}...\n"
+
+  safe_topic = topic.replace(" ", "_").replace("/", "_")[:50]
+  filename = f"research_{safe_topic}.{output_format}"
+  call_tool("file_write", path=filename, content=report_text)
+
+  call_tool("memory_retain", text=report_text, category="research")
+
+  try:
+    emit_event("research_complete", {"topic": topic, "file": filename, "sources": len(findings)})
+  except Exception:
+    pass
+
+  return_value = {"status": "success", "file": filename, "sources_count": len(findings), "topic": topic}
+---

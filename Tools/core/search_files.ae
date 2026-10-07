@@ -1,0 +1,31 @@
+---
+type: tool
+name: search_files
+description: Search workspace file contents and return matching paths, line numbers, and excerpts.
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  query:
+    type: string
+    required: true
+    description: Text to find.
+  path:
+    type: string
+    required: false
+    description: Workspace-relative directory.
+  glob:
+    type: string
+    required: false
+    description: File name glob.
+  case_sensitive:
+    type: boolean
+    required: false
+    description: Match letter case exactly.
+  max_results:
+    type: integer
+    required: false
+    description: Maximum matching lines.
+execute: |
+  return_value = json.loads(call_builtin("search_files", query=params["query"], path=params.get("path", "."), glob=params.get("glob", "*"), case_sensitive=params.get("case_sensitive", False), max_results=params.get("max_results", 25)))
+---

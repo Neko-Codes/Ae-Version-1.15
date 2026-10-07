@@ -1,0 +1,85 @@
+---
+type: tool
+name: create_workflow
+version: 1.0.0
+description: >-
+  Write a workflow — a repeatable procedure held as prose. The body IS the
+  workflow; there is no execute block. Use this for how-to knowledge you follow
+  yourself. Requires user approval.
+category: entity
+parameters:
+  name:
+    type: string
+    required: true
+    description: "Workflow name (letters, numbers, underscore, hyphen, dot)."
+  description:
+    type: string
+    required: false
+    description: "One line on when this workflow applies. Omit if the body's first line already says it."
+  category:
+    type: string
+    required: false
+    description: "Category folder (e.g. 'planning', 'research', 'debugging'). Default 'uncategorized'."
+  tags:
+    type: array
+    required: false
+    description: "Extra tags for search. The category is always included."
+  body:
+    type: string
+    required: true
+    description: "The workflow itself, as markdown prose — the steps, when to branch, and what done looks like."
+  scope:
+    type: string
+    required: false
+    description: "'local' (default, this agent only), 'shared' (all agents), or 'global'."
+execute: |
+  import re
+  import yaml
+
+  name = params["name"]
+  if not re.fullmatch(r"[a-zA-Z0-9_.-]+", name):
+      raise ValueError("Workflow name must contain only letters, numbers, underscores, hyphens, or dots.")
+  category = params.get("category") or "uncategorized"
+  if not re.fullmatch(r"[a-zA-Z0-9_.-]+", category):
+      raise ValueError("Category must contain only letters, numbers, underscores, or hyphens.")
+  body = str(params.get("body") or "").strip()
+  if not body:
+      raise ValueError(
+          "A workflow has no code — the body IS the workflow. Write the procedure as prose: "
+          "the steps, when to branch, and what 'done' looks like.")
+
+  metadata = {"type": "workflow", "name": name, "version": "1.0.0"}
+  if params.get("description"):
+      metadata["description"] = str(params["description"]).strip()
+  metadata["category"] = category
+  tags = params.get("tags")
+  if tags:
+      if isinstance(tags, str):
+          tags = [tags]
+      metadata["tags"] = sorted({str(t).strip().lower() for t in tags if str(t).strip()})
+
+  # Reject before writing: a file that will not parse is worse than no file.
+  # The body is a second YAML document, so validate the frontmatter on its own.
+  content = "---\n" + yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True) + "---\n\n" + body + "\n"
+  _lines = content.split("\n")
+  _end = next((i for i, _l in enumerate(_lines[1:], 1) if _l.strip() == "---"), None)
+  try:
+      yaml.safe_load("\n".join(_lines[1:_end]))
+  except Exception as ex:
+      raise ValueError(f"Workflow does not parse: {ex}")
+
+  path = f"Workflows/{category}/{name}.ae"
+  scope = params.get("scope")
+  _scope = {"scope": scope} if scope else {}
+  try:
+      call_builtin("ae_read", path=path, **_scope)
+      raise ValueError(f"Workflow already exists: {path}. Choose another name, or use update_entity to change it.")
+  except ValueError as ex:
+      if "already exists" in str(ex):
+          raise
+
+  saved = call_builtin("ae_write", path=path, content=content, **_scope)
+  return_value = {"saved": saved, "name": name, "type": "workflow",
+                  "invoke": (f"Read '{name}' to follow it — a workflow is prose, so it is not a function. "
+                             f"Its text is available from the next round via read_entity(name='{name}').")}
+---

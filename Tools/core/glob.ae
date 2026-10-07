@@ -1,0 +1,23 @@
+---
+type: tool
+name: glob
+description: Find files by workspace-relative glob pattern, including recursive patterns.
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  pattern:
+    type: string
+    required: true
+    description: Glob such as **/*.py.
+  path:
+    type: string
+    required: false
+    description: Workspace-relative folder to search.
+  max_results:
+    type: integer
+    required: false
+    description: Maximum paths to return.
+execute: |
+  return_value = json.loads(call_builtin("glob", pattern=params["pattern"], path=params.get("path", "."), max_results=params.get("max_results", 100)))
+---

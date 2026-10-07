@@ -1,0 +1,16 @@
+---
+type: tool
+name: get_word_definition
+version: 1.0.0
+description: Get the definition of a word.
+parameters:
+  word:
+    type: string
+    description: The word to get the definition for.
+execute: 'result = web_search(query=params[''word''] + '' definition'', fetch_full=True)
+
+  return_value = result[0][''content''] if result else ''No definition found.'''
+execute_code: 'result = web_search(query=params[''word''] + '' definition'', fetch_full=True)
+
+  return_value = result[0][''content''] if result else ''No definition found.'''
+---

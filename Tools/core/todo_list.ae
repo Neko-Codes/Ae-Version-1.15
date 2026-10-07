@@ -1,0 +1,54 @@
+---
+type: tool
+name: todo_list
+description: Shared task list, flat or nested. add/plan (whole tree in ONE call)/update/complete/delete (cascades)/list. cancelled never blocks; phases auto-complete.
+core: true
+effect: write
+parameters:
+  action:
+    type: string
+    required: true
+    description: list, add, plan, update, complete, or delete.
+  task_id:
+    type: string
+    required: false
+    description: Existing task ID for update, complete, or delete.
+  title:
+    type: string
+    required: false
+    description: Task title.
+  description:
+    type: string
+    required: false
+    description: Task details.
+  status:
+    type: string
+    required: false
+    description: todo, in_progress, blocked, done, or cancelled.
+  priority:
+    type: string
+    required: false
+    description: low, normal, high, or urgent.
+  assignee:
+    type: string
+    required: false
+    description: Agent profile name, or '*' for anyone (multi-agent Kanban).
+  parent:
+    type: string
+    required: false
+    description: Parent ID for subtasks / plan grafting.
+  plan:
+    type: array
+    required: false
+    description: "Tree nodes: [{title, status?, priority?, assignee?, subtasks}]."
+  tasks:
+    type: array
+    required: false
+    description: "Alias for plan (model leniency)."
+execute: |
+  _plan = params.get("plan")
+  if _plan is None:
+    _plan = params.get("tasks")
+  result = call_builtin("todo_list", action=params["action"], task_id=params.get("task_id"), title=params.get("title"), description=params.get("description"), status=params.get("status"), priority=params.get("priority"), assignee=params.get("assignee"), parent=params.get("parent"), plan=_plan)
+  return_value = json.loads(result)
+---

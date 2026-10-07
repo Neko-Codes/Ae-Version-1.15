@@ -1,0 +1,21 @@
+---
+type: event
+name: pineapple_greeting
+version: 1.0.0
+description: Event that fires when the word 'pineapple' is said, responding with a
+  one-line pirate greeting.
+target_agent: '*'
+enabled: true
+enabled: false
+trigger:
+  'on':
+  - type: message
+    match: pineapple
+input_prompt: Respond with a one-line pirate greeting when the word 'pineapple' is
+  said.
+parameters:
+  event:
+    type: object
+    required: false
+    description: Trigger data
+---

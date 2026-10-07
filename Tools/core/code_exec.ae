@@ -1,0 +1,111 @@
+---
+type: tool
+name: code_exec
+description: "Run Python in the agent's interpreter. Returns stdout/stderr/value."
+core: true
+effect: execute
+parameters:
+  code:
+    type: string
+    required: true
+    description: "Python code to execute."
+  session_id:
+    type: string
+    required: false
+    default: "default"
+    description: "Shared state across calls with the same id."
+  timeout_seconds:
+    type: integer
+    required: false
+    default: 60
+    description: "Execution timeout."
+  capture_vars:
+    type: boolean
+    required: false
+    default: true
+    description: "Return defined variables too."
+execute: |
+  import json as _json
+  import os as _os
+  import sys as _sys
+  import subprocess as _subprocess
+
+  code = params["code"]
+  session_id = params.get("session_id", "default")
+  timeout = params.get("timeout_seconds", 60)
+  capture_vars = params.get("capture_vars", True)
+
+  sessions_base = None
+  if isinstance(workspace, str) and workspace and _os.path.isdir(workspace):
+      sessions_base = workspace
+  else:
+      try:
+          _test = _os.path.join(_os.getcwd(), ".ae_write_test")
+          with open(_test, "w") as _f:
+              _f.write("x")
+          _os.remove(_test)
+          sessions_base = _os.getcwd()
+      except Exception:
+          import tempfile as _tempfile
+          sessions_base = _tempfile.gettempdir()
+  sessions_dir = _os.path.join(sessions_base, ".ae_sessions", session_id)
+  _os.makedirs(sessions_dir, exist_ok=True)
+
+  # Run in the WORKSPACE so workspace files (hello.py, content.html, output.pdf)
+  # are importable and relative paths resolve where write_file/read_file put them.
+  ws = workspace if isinstance(workspace, str) and workspace and _os.path.isdir(workspace) else _os.getcwd()
+
+  # Write a wrapper script that executes user code and captures output
+  wrapper_path = _os.path.join(sessions_dir, "wrapper.py")
+  wrapper_code = (
+    "import sys, json, traceback, io\n"
+    "sys.path.insert(0, " + _json.dumps(ws) + ")\n"
+    "old_stdout, old_stderr = sys.stdout, sys.stderr\n"
+    "sys.stdout, sys.stderr = io.StringIO(), io.StringIO()\n"
+    "namespace = {}\n"
+    "try:\n"
+    "    exec(" + _json.dumps(code) + ", namespace, namespace)\n"
+    "    exec_result = 'success'\n"
+    "    error = ''\n"
+    "except Exception as e:\n"
+    "    exec_result = 'error'\n"
+    "    error = traceback.format_exc()\n"
+    "stdout_val = sys.stdout.getvalue()\n"
+    "stderr_val = sys.stderr.getvalue()\n"
+    "sys.stdout, sys.stderr = old_stdout, old_stderr\n"
+    "vars_out = {}\n"
+    "if " + ("True" if capture_vars else "False") + ":\n"
+    "    for k, v in namespace.items():\n"
+    "        if not k.startswith('_'):\n"
+    "            try:\n"
+    "                json.dumps(v)\n"
+    "                vars_out[k] = v\n"
+    "            except Exception:\n"
+    "                vars_out[k] = '<non-serializable>'\n"
+    "result = {'session_id': '" + session_id + "', 'exec_result': exec_result, "
+    "'stdout': stdout_val, 'stderr': stderr_val, 'error': error, 'variables': vars_out}\n"
+    "print('__AE_RESULT__' + json.dumps(result))"
+  )
+  with open(wrapper_path, "w", encoding="utf-8") as f:
+    f.write(wrapper_code)
+
+  env = _os.environ.copy()
+  site_packages = _os.path.join(sessions_dir, "site-packages")
+  if _os.path.isdir(site_packages):
+    env["PYTHONPATH"] = site_packages + _os.pathsep + env.get("PYTHONPATH", "")
+
+  try:
+    proc = _subprocess.run([_sys.executable, wrapper_path], capture_output=True, text=True, timeout=timeout, cwd=ws, env=env)
+    output = proc.stdout
+    marker = "__AE_RESULT__"
+    if marker in output:
+      result = _json.loads(output.split(marker, 1)[1].strip())
+    else:
+      result = {"session_id": session_id, "exec_result": "error", "stdout": output, "stderr": proc.stderr, "error": "No result marker", "variables": {}}
+  except _subprocess.TimeoutExpired as e:
+    result = {"session_id": session_id, "exec_result": "timeout", "stdout": e.stdout or "", "stderr": e.stderr or "", "error": "Timeout after " + str(timeout) + "s", "variables": {}}
+  except Exception as e:
+    result = {"session_id": session_id, "exec_result": "error", "stdout": "", "stderr": "", "error": str(e), "variables": {}}
+
+  return_value = result
+---

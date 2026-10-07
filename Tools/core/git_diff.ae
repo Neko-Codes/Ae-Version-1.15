@@ -1,0 +1,15 @@
+---
+type: tool
+name: git_diff
+description: Summarize staged or unstaged workspace changes.
+core: true
+effect: read
+parallel_safe: true
+parameters:
+  staged:
+    type: boolean
+    required: false
+    description: Inspect staged changes when true.
+execute: |
+  return_value = call_builtin("git_diff", staged=params.get("staged", False))
+---

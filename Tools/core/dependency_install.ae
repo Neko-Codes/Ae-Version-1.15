@@ -1,0 +1,191 @@
+---
+type: tool
+name: dependency_install
+description: "Install a dependency. kind=pypi -> PyPI packages into the agent's own interpreter (immediately visible to code_exec and to bare `python`/`pip` in terminal). kind=system -> OS binaries via the native package manager (winget/choco/scoop/brew/apt). Never guess download URLs."
+core: true
+effect: execute
+parameters:
+  packages:
+    type: array
+    items:
+      type: string
+    required: true
+    description: "Package specs. kind=pypi: PyPI names [\"numpy\",\"reportlab\"]. kind=system: binary names for the OS package manager (e.g. \"wkhtmltopdf\")."
+  kind:
+    type: string
+    required: false
+    default: "pypi"
+    description: "pypi = Python packages into the agent's interpreter (default, takes effect immediately). system = OS binaries via winget/choco/scoop/brew/apt."
+  index_url:
+    type: string
+    required: false
+    description: Custom PyPI index (kind=pypi only).
+  upgrade_pip:
+    type: boolean
+    required: false
+    default: false
+    description: Upgrade pip first (kind=pypi only).
+execute: |
+  import importlib.util as _ilu
+  import os as _os
+  import shutil as _shutil
+  import subprocess as _subprocess
+  import sys as _sys
+
+  packages = params["packages"]
+  if not isinstance(packages, list) or not packages:
+      raise ValueError("packages must be a non-empty array of strings.")
+  packages = [str(p).strip() for p in packages if str(p).strip()]
+  if not packages:
+      raise ValueError("packages must be a non-empty array of strings.")
+  kind = str(params.get("kind", "pypi")).strip().lower()
+  if kind not in ("pypi", "system"):
+      raise ValueError("kind must be 'pypi' or 'system'.")
+
+  interpreter = _sys.executable
+
+  if kind == "system":
+      # ------------------------------------------------------------ system
+      # Try each native package manager in preference order. No manager means
+      # system binaries are genuinely unavailable - say so instead of sending
+      # the agent hunting for .deb/.dmg URLs that will not apply.
+      if _os.name == "nt":
+          Candidates = [
+              ["winget", "install", "--id", "{pkg}", "-e", "--accept-source-agreements", "--accept-package-agreements", "--silent"],
+              ["choco", "install", "{pkg}", "-y"],
+              ["scoop", "install", "{pkg}"],
+          ]
+      elif _sys.platform == "darwin":
+          Candidates = [["brew", "install", "{pkg}"]]
+      else:
+          Candidates = [
+              ["sudo", "apt-get", "install", "-y", "{pkg}"],
+              ["sudo", "dnf", "install", "-y", "{pkg}"],
+              ["sudo", "pacman", "-S", "--noconfirm", "{pkg}"],
+          ]
+      Manager = None
+      for Template in Candidates:
+          if _shutil.which(Template[0]):
+              Manager = Template
+              break
+      if Manager is None:
+          return_value = {
+              "success": False, "kind": "system", "packages": packages,
+              "error": "No OS package manager found (tried: "
+                       + ", ".join(t[0] for t in Candidates)
+                       + "). System binaries cannot be installed here. Use a pure-Python "
+                         "alternative instead (kind=pypi: reportlab/fpdf2 for PDF, Pillow for "
+                         "images) and tell the user plainly that the binary is unavailable.",
+          }
+      else:
+          Name = Manager[0]
+          Installed, Attempts = [], []
+          for Pkg in packages:
+              Cmd = [Part.replace("{pkg}", Pkg) for Part in Manager]
+              try:
+                  Proc = _subprocess.run(Cmd, capture_output=True, text=True, timeout=900)
+                  Attempts.append({"package": Pkg, "manager": Name, "exit": Proc.returncode,
+                                   "stderr": (Proc.stderr or "")[-1500:]})
+                  if Proc.returncode == 0:
+                      Installed.append(Pkg)
+              except Exception as Ex:
+                  Attempts.append({"package": Pkg, "manager": Name, "error": str(Ex)})
+          if Installed:
+              return_value = {
+                  "success": True, "kind": "system", "manager": Name,
+                  "installed": Installed, "attempts": Attempts,
+                  "note": ("Installed. The new binary is on PATH for the NEXT call; verify with "
+                           "`terminal` (`<tool> --version`) before using it."),
+              }
+          else:
+              return_value = {
+                  "success": False, "kind": "system", "manager": Name,
+                  "installed": [], "attempts": Attempts,
+                  "error": ("Every package failed to install via " + Name + ". Read attempts[].stderr. "
+                            "The manager may not recognise that exact package id. Do NOT retry the "
+                            "same manager with the same args; report the failure or switch to a "
+                            "pure-Python alternative (kind=pypi: reportlab/fpdf2 for PDF, Pillow for "
+                            "images)."),
+              }
+
+  else:
+      # -------------------------------------------------------------- pypi
+      # Anchor state under the workspace (writable by definition); the process
+      # cwd is NOT reliable (may be system32 when launched from a bare shell).
+      import tempfile as _tempfile
+      _base = workspace if isinstance(workspace, str) and workspace and _os.path.isdir(workspace) else None
+      if _base is None:
+          try:
+              _test = _os.path.join(_os.getcwd(), ".ae_write_test")
+              with open(_test, "w") as _f:
+                  _f.write("x")
+              _os.remove(_test)
+              _base = _os.getcwd()
+          except Exception:
+              _base = _tempfile.gettempdir()
+      sessions_dir = _os.path.join(_base, ".ae_sessions", "default")
+      _os.makedirs(sessions_dir, exist_ok=True)
+
+      cmd = [interpreter, "-m", "pip", "install"]
+      if params.get("upgrade_pip", False):
+          cmd.append("--upgrade")
+          cmd.append("pip")
+      index_url = params.get("index_url")
+      if index_url:
+          cmd.extend(["--index-url", index_url])
+      cmd.extend(packages)
+
+      try:
+          proc = _subprocess.run(cmd, capture_output=True, text=True, timeout=600, cwd=_os.getcwd())
+          success = proc.returncode == 0
+          # Verify importability in THIS interpreter, immediately. "pip exited 0"
+          # is not proof: the agent must be able to import it on the very next
+          # code_exec. Packages that ship only a console script land in
+          # not_importable, which is how the agent learns to call the binary
+          # instead of `import`.
+          Verified, Unverified = [], []
+          for Pkg in packages:
+              Top = Pkg.split("[")[0].split("=")[0].split(">")[0].split("<")[0].split("!")[0].strip().replace("-", "_")
+              if not Top:
+                  continue
+              try:
+                  if _ilu.find_spec(Top) is not None:
+                      Verified.append(Pkg)
+                  else:
+                      Unverified.append(Pkg)
+              except Exception:
+                  Unverified.append(Pkg)
+          return_value = {
+              "kind": "pypi",
+              "packages": packages,
+              "success": bool(success and not Unverified),
+              "installed": bool(success),
+              "interpreter": interpreter,
+              "importable_now": Verified,
+              "not_importable": Unverified,
+              "stdout": proc.stdout[-5000:] if proc.stdout else "",
+              "stderr": proc.stderr[-5000:] if proc.stderr else "",
+              "note": ("Installed into the agent's own interpreter. `importable_now` entries work "
+                       "immediately in code_exec AND in terminal (same PATH) - use them now, no restart."
+                       if success and not Unverified else
+                       ("pip exited 0 but these are NOT importable - they are command-line tools or "
+                        "have a different import name; call them as binaries instead: " + ", ".join(Unverified)
+                        if success else
+                        "Install FAILED - read stderr; do not assume the package is available. "
+                        "Check the name exists on PyPI before retrying.")),
+          }
+          if not success:
+              # pip itself failed: this is a HARD failure. Setting an explicit
+              # `error` lets the framework mark the call as an error, which stops
+              # the identical failing call from being retried verbatim.
+              return_value["error"] = (
+                  "pip exited " + str(proc.returncode) + " - the package(s) were NOT installed. "
+                  "Read stderr; verify the name exists on PyPI before any retry, and never repeat "
+                  "the identical failing command.")
+      except _subprocess.TimeoutExpired as e:
+          return_value = {"kind": "pypi", "packages": packages, "success": False,
+                          "stdout": e.stdout or "", "stderr": e.stderr or "",
+                          "error": "Installation timed out after 600s"}
+      except Exception as e:
+          return_value = {"kind": "pypi", "packages": packages, "success": False, "error": str(e)}
+---

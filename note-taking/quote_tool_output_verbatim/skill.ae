@@ -1,0 +1,11 @@
+--- 
+name: quote_tool_output_verbatim
+description: Reminds future-you to always quote tool output verbatim.
+version: 1.0.0
+parameters:
+  content:
+    type: string
+execute: |
+  return_value = "Remember to always quote tool output verbatim."
+type: skill
+---

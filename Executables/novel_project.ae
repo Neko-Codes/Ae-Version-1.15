@@ -1,0 +1,84 @@
+---
+type: ae
+name: novel_project
+version: "1.0.0"
+description: "Main orchestrator for the Sci-Fi Novel project. Coordinates multiple agents to write a novel."
+author: "Axiom Core"
+tags: ["orchestration", "multi-agent", "writing", "novel"]
+depends_on:
+  - name: directory_manage
+    type: TOOL
+    version: ">=1.0.0"
+  - name: delegate_task
+    type: TOOL
+    version: ">=1.0.0"
+  - name: memory_retain
+    type: TOOL
+    version: ">=1.0.0"
+  - name: memory_recall
+    type: TOOL
+    version: ">=1.0.0"
+permissions:
+  - read_files
+  - write_files
+  - read_memory
+  - write_memory
+  - spawn_agents
+  - execute_commands
+agents:
+  - name: "Architect"
+    role: "Planning and Outlining"
+  - name: "Writer"
+    role: "Drafting Content"
+  - name: "Editor"
+    role: "Review and Consistency Check"
+parameters:
+  topic:
+    type: string
+    required: false
+    default: "AI autonomy"
+    description: "Story topic/theme."
+  chapters:
+    type: integer
+    required: false
+    default: 5
+    description: "Number of chapters to generate."
+execute: |
+  import json as _json
+  import time as _time
+
+  topic = params.get("topic", "AI autonomy")
+  num_chapters = int(params.get("chapters", 5))
+
+  # 1. Initialize the project structure
+  call_tool("directory_manage", action="create", path="novel_project/chapters")
+  call_tool("directory_manage", action="create", path="novel_project/notes")
+
+  # 2. Save project config to memory
+  config = {"topic": topic, "chapters": num_chapters, "status": "outline_pending"}
+  call_tool("memory_retain", text="novel config: " + _json.dumps(config), category="novel")
+
+  # 3. Delegate outline creation to Architect agent (subagent)
+  outline_goal = f"Create a {num_chapters}-chapter outline for a sci-fi novel about: {topic}. Return as JSON with chapters array (title, summary, key_scenes)."
+  architect_result = call_tool("delegate_task", goal=outline_goal, toolsets=["web", "skill", "memory"], max_tokens=2000)
+  
+  # 4. Parse outline and store
+  try:
+    outline_data = _json.loads(architect_result) if isinstance(architect_result, str) else architect_result
+    outline = outline_data.get("result", architect_result)
+  except Exception:
+    outline = architect_result
+  
+  call_tool("memory_retain", text="novel outline: " + _json.dumps(outline), category="novel")
+
+  # 5. Delegate chapter writing to Writer agent for each chapter
+  for i, chapter in enumerate(outline.get("chapters", []) if isinstance(outline, dict) else []):
+    chapter_goal = f"Write Chapter {i+1}: {chapter.get('title', f'Chapter {i+1}')}. Summary: {chapter.get('summary', '')}. Key scenes: {chapter.get('key_scenes', [])}. Style: engaging sci-fi prose, ~2000 words."
+    call_tool("delegate_task", goal=chapter_goal, toolsets=["skill", "memory"], max_tokens=3000, background=True)
+    _time.sleep(1)  # Stagger submissions
+
+  # 6. Save workflow state
+  call_tool("memory_retain", text="novel workflow: " + _json.dumps({"topic": topic, "chapters_requested": num_chapters, "status": "chapters_delegated"}), category="novel")
+
+  return_value = {"status": "workflow_started", "topic": topic, "chapters": num_chapters, "message": f"Novel project initiated. {num_chapters} chapters delegated to Writer agents."}
+---

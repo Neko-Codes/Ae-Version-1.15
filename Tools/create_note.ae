@@ -1,0 +1,81 @@
+---
+type: tool
+name: create_note
+version: 1.0.0
+description: >-
+  Write a note — an observation, a correction, or a lesson you learned. Notes are
+  short and about your own behavior; knowledge is for facts about the world. No
+  execute block: the body is the note. Requires user approval.
+category: knowledge
+parameters:
+  name:
+    type: string
+    required: true
+    description: "Note name (letters, numbers, underscore, hyphen, dot)."
+  description:
+    type: string
+    required: false
+    description: "One line on what this note records."
+  category:
+    type: string
+    required: false
+    description: "'lesson', 'correction', 'harness', 'user', or 'observation'. Default 'observation'."
+  tags:
+    type: array
+    required: false
+    description: "Extra tags. The category is always included."
+  body:
+    type: string
+    required: true
+    description: "The note itself as markdown prose — what happened, what it means, and what to do differently."
+  scope:
+    type: string
+    required: false
+    description: "'local' (default, this agent only), 'shared' (all agents), or 'global'."
+execute: |
+  import re
+  import yaml
+
+  name = params["name"]
+  if not re.fullmatch(r"[a-zA-Z0-9_.-]+", name):
+      raise ValueError("Note name must contain only letters, numbers, underscores, hyphens, or dots.")
+  category = params.get("category") or "observation"
+  if not re.fullmatch(r"[a-zA-Z0-9_.-]+", category):
+      raise ValueError("Category must contain only letters, numbers, underscores, or hyphens.")
+  body = str(params.get("body") or "").strip()
+  if not body:
+      raise ValueError("A note needs body text — what happened, what it means, what to do differently.")
+
+  metadata = {"type": "note", "name": name, "version": "1.0.0"}
+  if params.get("description"):
+      metadata["description"] = str(params["description"]).strip()
+  metadata["category"] = category
+  tags = params.get("tags")
+  if tags:
+      if isinstance(tags, str):
+          tags = [tags]
+      metadata["tags"] = sorted({str(t).strip().lower() for t in tags if str(t).strip()})
+
+  content = "---\n" + yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True) + "---\n\n" + body + "\n"
+  # The body is a second YAML document, so validate the frontmatter on its own.
+  _lines = content.split("\n")
+  _end = next((i for i, _l in enumerate(_lines[1:], 1) if _l.strip() == "---"), None)
+  try:
+      yaml.safe_load("\n".join(_lines[1:_end]))
+  except Exception as ex:
+      raise ValueError(f"Note does not parse: {ex}")
+
+  path = f"Notes/{category}/{name}.ae"
+  scope = params.get("scope")
+  _scope = {"scope": scope} if scope else {}
+  try:
+      call_builtin("ae_read", path=path, **_scope)
+      raise ValueError(f"Note already exists: {name}. Use update_entity to change it.")
+  except ValueError as ex:
+      if "already exists" in str(ex):
+          raise
+
+  saved = call_builtin("ae_write", path=path, content=content, **_scope)
+  return_value = {"saved": saved, "name": name, "type": "note", "category": category,
+                  "invoke": f"Listed by list_capabilities(type='note') and readable via read_entity(name='{name}')."}
+---
